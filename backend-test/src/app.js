@@ -44,7 +44,7 @@ app.use('/api/permissions', permissionRoutes);
 app.use('/api/role-permissions', rolePermissionRoutes);
 app.use('/api/roles', roleRoutes);
 // 新增水质数据路由
-app.use('/api', waterQualityRoutes);
+app.use('/api/water-quality', waterQualityRoutes);
 
 // 健康检查端点
 app.get('/health', (req, res) => {
