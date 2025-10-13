@@ -1,8 +1,10 @@
+<!-- src/views/admin/SystemRole.vue -->
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Search, Plus, Edit, Delete, Key, User, UserFilled } from '@element-plus/icons-vue'
 import axios from 'axios'
+import { onBeforeRouteUpdate } from 'vue-router'
 
 // 状态管理
 const loading = ref(false)
@@ -93,6 +95,7 @@ const fetchData = async () => {
     loading.value = false
   }
 }
+
 // 初始化数据
 const initData = () => {
   fetchData()
@@ -273,6 +276,20 @@ const removeUserFromGroup = async (group, userId) => {
 // 组件挂载时初始化数据
 onMounted(() => {
   initData()
+})
+
+// 监听路由更新
+onBeforeRouteUpdate((to, from) => {
+  // 关闭对话框
+  dialogVisible.value = false
+  // 重置搜索关键词
+  searchKeyword.value = ''
+})
+
+// 组件卸载前清理
+onUnmounted(() => {
+  dialogVisible.value = false
+  searchKeyword.value = ''
 })
 </script>
 

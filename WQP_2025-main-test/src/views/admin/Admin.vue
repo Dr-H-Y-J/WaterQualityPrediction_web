@@ -1,19 +1,37 @@
+<!-- src/views/admin/Admin.vue -->
 <script setup lang="ts">
-import { useRouter } from 'vue-router'
+import { useRouter, useRoute } from 'vue-router'
 import { ref, watch } from 'vue'
+// 添加必要的图标导入
+import { 
+  Fold, 
+  Expand, 
+  HomeFilled, 
+  UserFilled, 
+  User, 
+  Edit, 
+  Upload, 
+  DataAnalysis, 
+  TrendCharts, 
+  Lightning 
+} from '@element-plus/icons-vue'
+
 const router = useRouter()
+const route = useRoute()
 const isCollapse = ref(false)
 
 const toggleCollapse = () => {
   isCollapse.value = !isCollapse.value
 }
 
+
 // 监听路由变化，确保侧边栏状态正确
 watch(
-  () => router.currentRoute.value.path,
-  () => {
-    // 路由变化时的处理逻辑
-  }
+  () => route.path,
+  (newPath) => {
+    // 可以在这里添加路由变化时的处理逻辑
+  },
+  { immediate: true }
 )
 </script>
 
@@ -42,7 +60,7 @@ watch(
           router
           unique-opened
           :collapse="isCollapse"
-          :default-active="router.currentRoute.value.path"
+          :default-active="route.path"
           class="sidebar-menu"
         >
           <el-menu-item index="/admin/system/analysis">
@@ -89,9 +107,16 @@ watch(
     
     <!-- 主内容区域 -->
     <div class="main-content">
-      <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
-          <component :is="Component" class="router-view-component" />
+      <router-view 
+        v-slot="{ Component, route }"
+        :key="route.fullPath"
+      >
+        <transition name="slide-fade" mode="out-in" appear>
+          <component 
+            :is="Component" 
+            :key="route.fullPath"
+            class="router-view-component" 
+          />
         </transition>
       </router-view>
     </div>
@@ -106,7 +131,7 @@ watch(
 }
 
 .sidebar {
-  width: 220px; /* 明确指定宽度 */
+  width: 220px;
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   box-shadow: 2px 0 12px 0 rgba(0, 21, 41, 0.08);
   z-index: 100;
@@ -115,8 +140,9 @@ watch(
   flex-direction: column;
   overflow: hidden;
 }
+
 .sidebar.is-collapsed {
-  width: 64px; /* 明确指定折叠宽度 */
+  width: 64px;
 }
 
 .sidebar-content {
@@ -272,17 +298,6 @@ watch(
   vertical-align: middle;
 }
 
-/* 折叠动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s;
-}
-
-.fade-enter-from,
-.fade-leave-to {
-  opacity: 0;
-}
-
 /* 滚动条样式 */
 .sidebar-menu::-webkit-scrollbar {
   width: 6px;
@@ -326,21 +341,25 @@ watch(
   height: 100%;
 }
 
-/* 内容区域过渡动画 */
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s, transform 0.3s;
+/* 优化过渡动画 */
+.slide-fade-enter-active {
+  transition: all 0.2s ease-out;
 }
 
-.fade-enter-from {
-  opacity: 0;
-  transform: translateX(30px);
+.slide-fade-leave-active {
+  transition: all 0.2s cubic-bezier(1, 0.5, 0.8, 1);
 }
 
-.fade-leave-to {
+.slide-fade-enter-from {
+  transform: translateX(20px);
   opacity: 0;
-  transform: translateX(-30px);
 }
+
+.slide-fade-leave-to {
+  transform: translateX(-20px);
+  opacity: 0;
+}
+
 /* 添加水波纹效果 */
 .sidebar {
   background: linear-gradient(180deg, #001529, #001529 50%, #002140);
@@ -369,7 +388,6 @@ watch(
   }
 }
 
-
 /* Logo区域添加水波动画 */
 .logo-container {
   background: linear-gradient(90deg, #002140, #001529);
@@ -396,6 +414,7 @@ watch(
     transform: translateX(100%);
   }
 }
+
 /* 响应式设计 */
 @media (max-width: 768px) {
   .sidebar {

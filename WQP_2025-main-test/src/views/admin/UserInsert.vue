@@ -1,15 +1,21 @@
 <!-- src/views/admin/UserInsert.vue -->
 <script setup>
-import { ref, computed } from 'vue'
-import { ElMessage, ElLoading } from 'element-plus'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ElMessage, ElLoading, ElMessageBox } from 'element-plus'
 import { read, utils, writeFileXLSX } from 'xlsx'
 import axios from 'axios'
+import { useRouter, useRoute } from 'vue-router'
+import { onBeforeRouteUpdate, onBeforeRouteLeave } from 'vue-router'
+// 添加图标导入
+import { Upload, Check } from '@element-plus/icons-vue'
 
 const importLoading = ref(false)
 const previewData = ref([])
 const excelHeaders = ref([])
 const rowErrors = ref({})
 const originalFile = ref(null)
+const router = useRouter()
+const route = useRoute()
 
 // 只保留账号和密码
 const SAMPLE_HEADERS = ['账号', '密码']
@@ -22,6 +28,30 @@ const validationRules = {
 
 const hasValidationErrors = computed(() => Object.keys(rowErrors.value).length > 0)
 const validationErrors = computed(() => Object.values(rowErrors.value).flat())
+
+// 重置组件状态
+const resetComponentState = () => {
+  previewData.value = []
+  excelHeaders.value = []
+  rowErrors.value = {}
+  originalFile.value = null
+  importLoading.value = false
+}
+
+// 监听路由更新，在同级路由切换时重置组件状态
+onBeforeRouteUpdate((to, from) => {
+  if (to.path.includes('user') && from.path.includes('user')) {
+    resetComponentState()
+  }
+})
+
+// 离开路由前的确认
+onBeforeRouteLeave((to, from) => {
+  if (previewData.value.length > 0) {
+    const answer = window.confirm('您有未保存的数据，确定要离开吗？')
+    if (!answer) return false
+  }
+})
 
 const handleFileChange = async (uploadFile) => {
   const loading = ElLoading.service({ lock: true })
@@ -79,20 +109,34 @@ const handleImport = async () => {
       role: 'user' // 默认角色
     }))
 
-    // 发送到正确的API端点
-    const response = await axios.post('/api/users/batch', usersToCreate)
+    // 修复API路径 - 使用正确的批量创建用户接口
+    const response = await axios.post('/api/users/batch-create', usersToCreate)
     
     if (response.data.success) {
       const { createdCount, failedCount } = response.data.data
       ElMessage.success(`导入完成：成功创建 ${createdCount} 条数据，失败 ${failedCount} 条`)
-      previewData.value = []
-      originalFile.value = null
+      
+      // 导入成功后询问用户是否跳转到用户管理页面
+      ElMessageBox.confirm(
+        '用户导入成功，是否跳转到用户管理页面查看？',
+        '导入完成',
+        {
+          confirmButtonText: '跳转查看',
+          cancelButtonText: '继续导入',
+          type: 'success',
+        }
+      ).then(() => {
+        router.push('/admin/user/update')
+      }).catch(() => {
+        // 用户选择继续导入，重置表单
+        resetComponentState()
+      })
     } else {
       throw new Error(response.data.message || '导入失败')
     }
   } catch (error) {
     console.error('导入失败详情:', error)
-    const msg = error.response?.data?.message || error.message
+    const msg = error.response?.data?.message || error.message || '导入失败'
     ElMessage.error(`导入失败: ${msg}`)
   } finally {
     importLoading.value = false
@@ -128,6 +172,21 @@ const validateRow = (row, rowIndex) => {
     delete rowErrors.value[rowIndex]
   }
 }
+
+// 组件挂载时重置状态
+onMounted(() => {
+  resetComponentState()
+})
+
+// 组件卸载前清理
+onUnmounted(() => {
+  resetComponentState()
+})
+
+// 添加跳转到用户管理的方法
+const goToUserManagement = () => {
+  router.push('/admin/user/update')
+}
 </script>
 
 <template>
@@ -137,6 +196,11 @@ const validateRow = (row, rowIndex) => {
       <div class="header-left">
         <h2>用户批量导入</h2>
         <p class="subtitle">通过Excel文件批量导入用户信息</p>
+      </div>
+      <div class="header-right">
+        <el-button @click="goToUserManagement" type="primary" plain>
+          用户管理
+        </el-button>
       </div>
     </div>
 
@@ -215,7 +279,6 @@ const validateRow = (row, rowIndex) => {
   background: #f5f7fa;
 }
 
-
 /* 头部区域 */
 .header-section {
   display: flex;
@@ -240,6 +303,11 @@ const validateRow = (row, rowIndex) => {
   font-size: 14px;
 }
 
+.header-right {
+  display: flex;
+  align-items: center;
+}
+
 /* 内容区域 */
 .content-section {
   flex: 1;
@@ -250,7 +318,7 @@ const validateRow = (row, rowIndex) => {
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   padding: 20px;
   overflow: hidden;
-  min-height: 500px; /* 确保最小高度 */
+  min-height: 500px;
   min-width: 1200px;
 }
 
@@ -275,9 +343,8 @@ const validateRow = (row, rowIndex) => {
   flex: 1;
   display: flex !important;
   flex-direction: column;
-  min-height: 0; /* 允许卡片收缩 */
+  min-height: 0;
 }
-
 
 :deep(.flex-card .el-card__body) {
   flex: 1;
@@ -290,6 +357,30 @@ const validateRow = (row, rowIndex) => {
 :deep(.el-table) {
   flex: 1;
   margin-bottom: 16px;
-  min-height: 300px; /* 确保表格最小高度 */
+  min-height: 300px;
+}
+
+.upload-section {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .upload-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .header-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .header-right {
+    margin-top: 16px;
+    justify-content: flex-end;
+  }
 }
 </style>

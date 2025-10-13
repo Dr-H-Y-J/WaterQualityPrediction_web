@@ -1,8 +1,9 @@
 <!-- src/views/admin/UserUpdate.vue -->
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from 'axios'
+import { onBeforeRouteUpdate, onBeforeRouteLeave } from 'vue-router'
 
 // 用户列表数据
 const userList = ref([])
@@ -15,37 +16,48 @@ const editableIds = ref([])
 // 缓存原始数据
 const originalDataCache = new Map()
 
-// 截取UUID显示
-const formatUUID = (uuid) => {
-  if (!uuid) return ''
-  // 显示前8位和后4位，中间用省略号
-  return `${uuid.substring(0, 2)}...${uuid.substring(uuid.length - 2)}`
+// 截取ID显示
+const formatId = (id) => {
+  // 转换为字符串并检查有效性
+  const str = id != null ? String(id) : ''
+  
+  if (!str) return ''
+  
+  // 对于较短的ID，直接显示
+  if (str.length <= 6) return str
+  
+  // 对于较长的ID，显示前2位和后2位
+  return `${str.substring(0, 2)}...${str.substring(str.length - 2)}`
 }
-
 // 获取用户数据
 const fetchUsers = async () => {
   try {
-    // 修改为正确的API路径
+    console.log('开始获取用户数据...', {
+      page: currentPage.value,
+      limit: pageSize.value
+    });
+    
     const response = await axios.get('/api/users', {
       params: {
         page: currentPage.value,
         limit: pageSize.value,
       },
-    })
+    });
     
-    // 根据实际返回的数据结构调整
+    console.log('API响应:', response.data);
+    
     if (response.data.success) {
-      userList.value = response.data.data
-      total.value = response.data.data.length // 如果后端没有返回总数，需要调整
+      userList.value = response.data.data;
+      total.value = response.data.pagination?.total || response.data.data.length;
+      console.log('成功获取用户数据，总数:', total.value);
     } else {
-      throw new Error(response.data.message || '获取用户数据失败')
+      throw new Error(response.data.message || '获取用户数据失败');
     }
   } catch (error) {
-    console.error('获取用户数据失败:', error)
-    ElMessage.error('获取用户数据失败: ' + (error.response?.data?.message || error.message))
+    console.error('获取用户数据失败:', error);
+    ElMessage.error('获取用户数据失败: ' + (error.response?.data?.message || error.message));
   }
-}
-
+};
 // 分页变化处理
 const handlePageChange = (newPage) => {
   currentPage.value = newPage
@@ -76,32 +88,60 @@ const cancelEdit = (row) => {
 // 保存修改
 const handleSave = async (row) => {
   try {
-    // 修改为正确的API路径和参数
-    const response = await axios.put(`/api/users/${row.id}`, {
+    // 准备更新数据
+    const updateData = {
       username: row.username,
-      // 注意：通常不会直接更新密码，这里可能需要调整
-      email: row.email, // 如果有邮箱字段
-      role: row.role   // 如果有角色字段
-    })
+      email: row.email,
+      role: row.role
+    };
+
+    // 只有当密码不为空时才更新密码
+    if (row.password && row.password.trim() !== '') {
+      updateData.password = row.password;
+    }
+
+    const response = await axios.put(`/api/users/${row.id}`, updateData);
 
     if (response.data.success) {
-      ElMessage.success('修改成功')
-      editableIds.value = editableIds.value.filter((id) => id !== row.id)
-      originalDataCache.delete(row.id)
+      ElMessage.success('修改成功');
+      editableIds.value = editableIds.value.filter((id) => id !== row.id);
+      originalDataCache.delete(row.id);
+      // 清空密码输入框
+      row.password = '';
     } else {
-      throw new Error(response.data.message || '修改失败')
+      throw new Error(response.data.message || '修改失败');
     }
   } catch (err) {
-    console.error('保存失败:', err)
-    const errorMsg = err.response?.data?.message || err.message || '未知错误'
-    ElMessage.error(`保存失败: ${errorMsg}`)
-    cancelEdit(row)
+    console.error('保存失败:', err);
+    const errorMsg = err.response?.data?.message || err.message || '未知错误';
+    ElMessage.error(`保存失败: ${errorMsg}`);
+    cancelEdit(row);
   }
-}
-
+};
 // 初始化时获取数据
 onMounted(() => {
   fetchUsers()
+})
+
+// 组件卸载前清理
+onUnmounted(() => {
+  editableIds.value = []
+  originalDataCache.clear()
+})
+
+// 监听路由更新
+onBeforeRouteUpdate((to, from) => {
+  // 清理编辑状态
+  editableIds.value = []
+  originalDataCache.clear()
+})
+
+// 离开路由前确认
+onBeforeRouteLeave((to, from) => {
+  if (editableIds.value.length > 0) {
+    const answer = window.confirm('您有未保存的编辑，确定要离开吗？')
+    if (!answer) return false
+  }
 })
 </script>
 
@@ -121,14 +161,14 @@ onMounted(() => {
     <div class="content-section">
       <div class="table-container">
         <el-table :data="userList" border style="width: 100%" height="75vh" class="el-table">
-          <!-- 用户ID列 -->
-          <el-table-column prop="id" label="用户ID" width="120">
-            <template #default="{ row }">
-              <el-tooltip effect="dark" :content="row.id" placement="top">
-                <span class="uuid-display">{{ formatUUID(row.id) }}</span>
-              </el-tooltip>
-            </template>
-          </el-table-column>
+        <!-- 用户ID列 -->
+        <el-table-column prop="id" label="用户ID" width="120">
+          <template #default="{ row }">
+            <el-tooltip effect="dark" :content="row.id" placement="top">
+              <span class="uuid-display">{{ formatId(row.id) }}</span>
+            </el-tooltip>
+          </template>
+        </el-table-column>
 
           <!-- 用户名列（可编辑） -->
           <el-table-column prop="username" label="用户名">
@@ -137,8 +177,7 @@ onMounted(() => {
               <span v-else>{{ row.username }}</span>
             </template>
           </el-table-column>
-
-          <!-- 密码列（可编辑） -->
+          <!-- 密码列（改进版） -->
           <el-table-column prop="password" label="密码">
             <template #default="{ row }">
               <el-input
@@ -146,8 +185,9 @@ onMounted(() => {
                 v-model="row.password"
                 type="password"
                 show-password
+                placeholder="留空则不修改密码"
               />
-              <span v-else>{{ row.password.replace(/./g, '*') }}</span>
+              <span v-else>••••••</span>
             </template>
           </el-table-column>
 
@@ -185,7 +225,6 @@ onMounted(() => {
   </div>
 </template>
 
-<!-- 在 UserUpdate.vue 中替换整个 <style scoped> 部分 -->
 <style scoped>
 .page-container {
   display: flex;

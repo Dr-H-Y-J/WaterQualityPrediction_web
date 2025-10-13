@@ -267,7 +267,7 @@
                   detectionConfig.weights
                 }}</el-descriptions-item>
                 <el-descriptions-item label="总数据行数">{{
-                  3467
+                  totalDataRows
                 }}</el-descriptions-item>
               </el-descriptions>
 
@@ -384,9 +384,13 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Warning, Loading, UploadFilled, Download } from '@element-plus/icons-vue'
+import axios from 'axios'
+
+// API基础URL
+const API_BASE_URL = '/api'
 
 // 步骤控制
 const step = ref(1)
@@ -397,17 +401,11 @@ const detectionCompleted = ref(false) // 新增：标记预测是否完成
 // 数据选择相关
 const dataTab = ref('select') // 'upload' 或 'select'，默认改为选择数据
 const selectedExistingData = ref([]) // 选择的已有数据
-const existingDataList = ref([
-  { id: 1, name: '2023年水质数据', description: '2023年全年水质监测数据', createTime: '2023-12-31 23:59:59', dataCount: 8760 },
-  { id: 2, name: '春季水质样本', description: '春季水质监测样本数据', createTime: '2024-03-31 23:59:59', dataCount: 2160 },
-  { id: 3, name: '夏季水质样本', description: '夏季水质监测样本数据', createTime: '2024-06-30 23:59:59', dataCount: 2200 },
-  { id: 4, name: '秋季水质样本', description: '秋季水质监测样本数据', createTime: '2024-09-30 23:59:59', dataCount: 2100 },
-  { id: 5, name: '冬季水质样本', description: '冬季水质监测样本数据', createTime: '2024-12-31 23:59:59', dataCount: 2000 },
-])
+const existingDataList = ref([])
 const dataListLoading = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(10)
-const totalDataItems = ref(25)
+const totalDataItems = ref(0)
 
 // 预览相关
 const previewDialogVisible = ref(false)
@@ -648,23 +646,43 @@ const handleDataSelectionChange = (selection) => {
   selectedExistingData.value = selection
 }
 
+// 获取数据集列表
+const fetchDatasets = async () => {
+  try {
+    dataListLoading.value = true
+    const response = await axios.get(`${API_BASE_URL}/datasets`)
+    existingDataList.value = response.data.datasets.map(item => ({
+      id: item.id,
+      name: item.table_name,
+      description: item.description,
+      createTime: item.created_at,
+      dataCount: item.row_count
+    }))
+    totalDataItems.value = response.data.total
+  } catch (error) {
+    ElMessage.error('获取数据集失败')
+    console.error(error)
+  } finally {
+    dataListLoading.value = false
+  }
+}
+
 // 预览数据
-const previewData = (dataItem) => {
-  previewDataItem.value = dataItem
+const previewData = async (dataItem) => {
   previewDialogVisible.value = true
   previewLoading.value = true
-  
-  // 模拟获取数据
-  setTimeout(() => {
-    previewDataList.value = [
-      { date: '2023-01-01 00', temperature: '12.4', pH: '7.83', O2: '12.63', NTU: '8', uS: '254.7' },
-      { date: '2023-01-01 01', temperature: '12', pH: '7.84', O2: '13.43', NTU: '10.3', uS: '255.3' },
-      { date: '2023-01-01 02', temperature: '12', pH: '7.83', O2: '13.49', NTU: '9.7', uS: '255.5' },
-      { date: '2023-01-01 03', temperature: '12', pH: '7.83', O2: '13.33', NTU: '8.7', uS: '255.9' },
-      { date: '2023-01-01 04', temperature: '12.3', pH: '7.81', O2: '12.48', NTU: '7.6', uS: '254.9' },
-    ]
+
+  try {
+    const response = await axios.get(`${API_BASE_URL}/datasets/${dataItem.name}`, {
+      params: { limit: 5 }
+    })
+    previewDataList.value = response.data.rows
+  } catch (error) {
+    ElMessage.error('加载数据失败')
+    console.error(error)
+  } finally {
     previewLoading.value = false
-  }, 800)
+  }
 }
 
 // 分页相关
@@ -795,6 +813,11 @@ const resetDetection = () => {
   detectionResults.value = null
   detectionCompleted.value = false
 }
+
+// 组件挂载时获取数据集列表
+onMounted(() => {
+  fetchDatasets()
+})
 </script>
 
 <style scoped>
