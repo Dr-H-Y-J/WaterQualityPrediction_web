@@ -58,10 +58,12 @@ class WaterQuality {
         throw new Error('无效的表名');
       }
       
-      // 更严格的表名校验（只允许字母、数字、下划线，且不超过64字符）
-      if (!/^[a-zA-Z0-9_]{1,64}$/.test(table_name)) {
-        throw new Error('表名格式不正确');
-      }
+      
+    // 更宽松但仍然安全的表名校验（允许字母、数字、下划线和连字符，且不超过64字符）
+    if (!/^[a-zA-Z0-9_-]{1,64}$/.test(table_name)) {
+      throw new Error('表名格式不正确');
+    }
+    
       
       // 检查表是否存在
       const [tableExists] = await promisePool.execute(
