@@ -19,7 +19,7 @@
             <!-- Step 1: Data Selection -->
             <div v-if="step === 1" class="data-upload-step">
               <div class="existing-data-section">
-                <el-table 
+               <el-table 
                   :data="existingDataList" 
                   style="width: 100%" 
                   v-loading="dataListLoading"
@@ -28,7 +28,7 @@
                   <el-table-column type="selection" width="55" />
                   <el-table-column prop="name" label="数据名称" />
                   <el-table-column prop="description" label="描述" />
-                  <el-table-column prop="createTime" label="创建时间" width="180" />
+                  <!-- 移除创建时间列 -->
                   <el-table-column prop="dataCount" label="数据量" width="100" />
                   <el-table-column label="操作" width="120">
                     <template #default="{ row }">
@@ -199,30 +199,30 @@
 <!-- 修改数据预览对话框中的表格部分 -->
 
  <el-dialog
-        v-model="previewDialogVisible"
-        title="数据预览"
-        width="80%"
-        top="5vh"
-      >
-        <el-table 
-          :data="previewDataList" 
-          height="400"
-          v-loading="previewLoading"
-        >
-          <!-- 动态生成列 -->
-          <el-table-column 
-            v-for="(value, key) in previewDataList.length > 0 ? previewDataList[0] : {}" 
-            :key="key"
-            :prop="key"
-            :label="key"
-          />
-        </el-table>
-        <template #footer>
-          <span class="dialog-footer">
-            <el-button @click="previewDialogVisible = false">关闭</el-button>
-          </span>
-        </template>
-      </el-dialog>
+  v-model="previewDialogVisible"
+  title="数据预览"
+  width="80%"
+  top="5vh"
+>
+  <el-table 
+    :data="previewDataList" 
+    height="400"
+    v-loading="previewLoading"
+  >
+    <!-- 动态生成列 -->
+    <el-table-column 
+      v-for="column in previewColumns"
+      :key="column.name"
+      :prop="column.name"
+      :label="column.label"
+    />
+  </el-table>
+  <template #footer>
+    <span class="dialog-footer">
+      <el-button @click="previewDialogVisible = false">关闭</el-button>
+    </span>
+  </template>
+</el-dialog>
   </div>
 </template>
 
@@ -254,7 +254,52 @@ const previewDialogVisible = ref(false)
 const previewDataItem = ref(null)
 const previewDataList = ref([])
 const previewLoading = ref(false)
+// 添加预览列定义
+const previewColumns = computed(() => {
+  if (previewDataList.value.length > 0) {
+    return Object.keys(previewDataList.value[0]).map(key => ({
+      name: key,
+      label: getColumnLabel(key)
+    }))
+  }
+  return []
+})
 
+// 获取列标签
+const getColumnLabel = (key) => {
+  const columnMap = {
+    'date': '日期',
+    'temperature': '温度(℃)',
+    'pH': 'pH值',
+    'O2': '溶解氧(mg/L)',
+    'NTU': '浊度(NTU)',
+    'uS': '电导率(μS/cm)'
+  }
+  return columnMap[key] || key
+}
+// 日期格式化函数
+const formatDateTime = (dateString) => {
+  if (!dateString) return '未知时间';
+  
+  try {
+    const date = new Date(dateString);
+    // 检查日期是否有效
+    if (isNaN(date.getTime())) return '无效时间';
+    
+    // 格式化为 YYYY-MM-DD HH:mm:ss
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+    
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+  } catch (error) {
+    console.error('日期格式化错误:', error);
+    return '格式错误';
+  }
+};
 // 检测配置
 const detectionConfig = reactive({
   model: '',
@@ -404,13 +449,12 @@ const handleDataSelectionChange = (selection) => {
 const fetchDatasets = async () => {
   try {
     dataListLoading.value = true
-    // 修改为实际存在的API端点，或者创建mock数据
     const response = await axios.get(`${API_BASE_URL}/water-quality/datasets`)
     existingDataList.value = response.data.datasets.map(item => ({
       id: item.id,
       name: item.table_name,
       description: item.description || '暂无描述',
-      createTime: item.created_at || new Date().toISOString(),
+      // 移除创建时间
       dataCount: item.row_count || 0
     }))
     totalDataItems.value = response.data.total || response.data.datasets.length
@@ -422,14 +466,14 @@ const fetchDatasets = async () => {
         id: 1,
         name: 'water_data_2023',
         description: '2023年水质监测数据',
-        createTime: '2023-12-01 10:30:00',
+        // 移除创建时间
         dataCount: 8760
       },
       {
         id: 2,
         name: 'water_data_2024_q1',
         description: '2024年第一季度水质数据',
-        createTime: '2024-04-01 14:15:00',
+        // 移除创建时间
         dataCount: 2160
       }
     ]
@@ -440,31 +484,21 @@ const fetchDatasets = async () => {
   }
 }
 
-// 预览数据
+
 // 预览数据
 const previewData = async (dataItem) => {
   previewDialogVisible.value = true
   previewLoading.value = true
 
   try {
-    // 修改为实际的API端点
+    // 调用新的预览接口
     const response = await axios.get(`${API_BASE_URL}/water-quality/datasets/${dataItem.name}/preview`, {
       params: { limit: 50 }
     })
     
-    // 确保数据格式正确并映射字段
+    // 确保数据格式正确
     if (response.data && Array.isArray(response.data.rows)) {
-      previewDataList.value = response.data.rows.map(row => {
-        // 确保所有字段都正确映射
-        const mappedRow = {}
-        
-        // 遍历每一行的所有属性
-        Object.keys(row).forEach(key => {
-          mappedRow[key] = row[key]
-        })
-        
-        return mappedRow
-      })
+      previewDataList.value = response.data.rows
     } else {
       throw new Error('数据格式不正确')
     }

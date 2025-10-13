@@ -16,46 +16,31 @@
             placeholder="请选择"
             @change="loadData"
             style="width: 260px"
+            :loading="dataListLoading"
           >
             <el-option 
-              v-for="(item, key) in dataSets" 
-              :key="key" 
-              :label="item.label" 
-              :value="key" 
+              v-for="item in dataSets" 
+              :key="item.table_name" 
+              :label="item.table_name" 
+              :value="item.table_name" 
             />
           </el-select>
         </el-form-item>
       </el-form>
 
-      <!-- 2. 数据集预览 -->
-      <el-table 
-        v-if="rawRows.length" 
-        :data="rawRows" 
-        style="width: 100%" 
-        max-height="300"
-        class="data-preview-table"
-      >
-        <el-table-column prop="date" label="日期时间" width="160" />
-        <el-table-column prop="temperature" label="水温(℃)" width="100" />
-        <el-table-column prop="pH" label="pH值" width="80" />
-        <el-table-column prop="O2" label="溶解氧(mg/L)" width="120" />
-        <el-table-column prop="NTU" label="浊度(NTU)" width="100" />
-        <el-table-column prop="uS" label="电导率(μS/cm)" width="120" />
-      </el-table>
-
-      <!-- 3. 生成建议按钮（放在数据集下方） -->
-      <div v-if="rawRows.length" class="generate-button">
+      <!-- 2. 生成建议按钮 -->
+      <div v-if="selectedKey" class="generate-button">
         <el-button
           type="success"
-          :disabled="!rawRows.length || tableData.length > 0"
-          @click="generateSuggestion"
+          :disabled="!selectedKey"
+          @click="loadDataAndGenerate"
           class="generate-btn"
         >
           生成水质改善建议
         </el-button>
       </div>
 
-      <!-- 4. 带建议的最终列表 -->
+      <!-- 3. 带建议的最终列表 -->
       <el-table
         v-if="tableData.length"
         :data="tableData"
@@ -63,16 +48,18 @@
         max-height="400"
         class="suggestion-table"
       >
-        <el-table-column prop="date" label="日期时间" width="160" />
-        <el-table-column prop="temperature" label="水温(℃)" width="100" />
-        <el-table-column prop="pH" label="pH值" width="80" />
-        <el-table-column prop="O2" label="溶解氧(mg/L)" width="120" />
-        <el-table-column prop="NTU" label="浊度(NTU)" width="100" />
-        <el-table-column prop="uS" label="电导率(μS/cm)" width="120" />
+        <!-- 动态生成数据列 -->
+        <el-table-column 
+          v-for="column in dynamicColumns"
+          :key="column.name"
+          :prop="column.name"
+          :label="column.label"
+          :width="column.width"
+        />
         <el-table-column prop="suggestion" label="水质改善建议" min-width="220" class-name="suggestion-column" />
       </el-table>
 
-      <!-- 5. 导出 -->
+      <!-- 4. 导出 -->
       <div v-if="tableData.length" class="export-button">
         <el-button type="primary" @click="downloadCsv" class="export-btn"> 
           下载带建议的 CSV 
@@ -83,8 +70,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import dayjs from 'dayjs'
+import axios from 'axios'
 
 interface WaterQualityRow {
   date: string
@@ -94,71 +82,151 @@ interface WaterQualityRow {
   NTU: string
   uS: string
   suggestion?: string
+  [key: string]: any // 允许动态属性
 }
+
+interface DataSet {
+  id: number
+  table_name: string
+  description: string
+  row_count: number
+}
+
+const API_BASE_URL = '/api'
 
 const selectedKey = ref('')
-const rawRows = ref<WaterQualityRow[]>([])
 const tableData = ref<WaterQualityRow[]>([])
+const dataSets = ref<DataSet[]>([])
+const dataListLoading = ref(false)
+const columnInfo = ref<{name: string, label: string, width?: string}[]>([])
 
-const dataSets = {
-  'qtj_2023_q1': { label: '钱塘江数据集 2023 Q1' },
-  'qtj_2023_q2': { label: '钱塘江数据集 2023 Q2' },
-  'qtj_2023_q3': { label: '钱塘江数据集 2023 Q3' },
-  'qtj_2023_q4': { label: '钱塘江数据集 2023 Q4' }
-}
-
-function loadData() {
-  // 模拟加载数据
-  rawRows.value = [
-    {
-      date: '2023-01-01 08:00',
-      temperature: '12.5',
-      pH: '6.8',
-      O2: '4.2',
-      NTU: '12.3',
-      uS: '280'
-    },
-    {
-      date: '2023-01-01 12:00',
-      temperature: '13.2',
-      pH: '6.7',
-      O2: '4.0',
-      NTU: '15.1',
-      uS: '295'
-    },
-    {
-      date: '2023-01-01 16:00',
-      temperature: '13.8',
-      pH: '6.9',
-      O2: '3.8',
-      NTU: '18.2',
-      uS: '310'
-    },
-    {
-      date: '2023-01-01 20:00',
-      temperature: '12.9',
-      pH: '7.0',
-      O2: '4.5',
-      NTU: '10.5',
-      uS: '275'
-    },
-    {
-      date: '2023-01-02 08:00',
-      temperature: '13.1',
-      pH: '6.6',
-      O2: '3.9',
-      NTU: '16.8',
-      uS: '305'
-    }
-  ]
-  tableData.value = []
-}
-
-function generateSuggestion() {
-  tableData.value = rawRows.value.map((r) => ({
-    ...r,
-    suggestion: genSuggestion(r),
+// 动态列定义 - 基于实际数据列
+const dynamicColumns = computed(() => {
+  return columnInfo.value.map(col => ({
+    name: col.name,
+    label: getColumnLabel(col.name),
+    width: col.width || getDefaultColumnWidth(col.name)
   }))
+})
+
+// 获取列标签映射
+const getColumnLabel = (key: string) => {
+  const columnMap: {[key: string]: string} = {
+    'date': '日期时间',
+    'temperature': '水温(℃)',
+    'pH': 'pH值',
+    'O2': '溶解氧(mg/L)',
+    'NTU': '浊度(NTU)',
+    'uS': '电导率(μS/cm)'
+  }
+  return columnMap[key] || key
+}
+
+// 获取默认列宽度
+const getDefaultColumnWidth = (key: string) => {
+  const widthMap: {[key: string]: string} = {
+    'date': '160',
+    'temperature': '100',
+    'pH': '80',
+    'O2': '120',
+    'NTU': '100',
+    'uS': '120'
+  }
+  return widthMap[key] || '100'
+}
+
+// 获取数据集列表
+const fetchDatasets = async () => {
+  try {
+    dataListLoading.value = true
+    const response = await axios.get(`${API_BASE_URL}/water-quality/datasets`)
+    
+    if (response.data.success) {
+      dataSets.value = response.data.datasets || []
+    } else {
+      throw new Error(response.data.error || '获取数据集失败')
+    }
+  } catch (error) {
+    console.error('获取数据集失败:', error)
+    // 使用模拟数据作为备选方案
+    dataSets.value = [
+      { id: 1, table_name: 'qtj_2023_q1', description: '钱塘江数据集 2023 Q1', row_count: 2000 },
+      { id: 2, table_name: 'qtj_2023_q2', description: '钱塘江数据集 2023 Q2', row_count: 2000 },
+      { id: 3, table_name: 'qtj_2023_q3', description: '钱塘江数据集 2023 Q3', row_count: 2000 },
+      { id: 4, table_name: 'qtj_2023_q4', description: '钱塘江数据集 2023 Q4', row_count: 2000 }
+    ]
+  } finally {
+    dataListLoading.value = false
+  }
+}
+
+// 加载数据并生成建议
+async function loadDataAndGenerate() {
+  if (!selectedKey.value) return
+  
+  try {
+    dataListLoading.value = true
+    const response = await axios.get(`${API_BASE_URL}/water-quality/datasets/${selectedKey.value}/preview`, {
+      params: { limit: 50 } // 增加数据量以生成更全面的建议
+    })
+    
+    if (response.data.success && Array.isArray(response.data.rows)) {
+      // 获取列信息
+      const rows = response.data.rows
+      if (rows.length > 0) {
+        const columns = Object.keys(rows[0])
+          .filter(key => key !== 'suggestion') // 排除建议列
+          .map(key => ({
+            name: key,
+            label: getColumnLabel(key),
+            width: getDefaultColumnWidth(key)
+          }))
+        columnInfo.value = columns
+      }
+      
+      // 处理数据并生成建议
+      tableData.value = rows.map((row: any) => ({
+        ...row,
+        suggestion: genSuggestion(row)
+      }))
+    } else {
+      throw new Error('数据格式不正确')
+    }
+  } catch (error) {
+    console.error('加载数据失败:', error)
+    // 使用模拟数据
+    columnInfo.value = [
+      { name: 'date', label: '日期时间', width: '160' },
+      { name: 'temperature', label: '水温(℃)', width: '100' },
+      { name: 'pH', label: 'pH值', width: '80' },
+      { name: 'O2', label: '溶解氧(mg/L)', width: '120' },
+      { name: 'NTU', label: '浊度(NTU)', width: '100' },
+      { name: 'uS', label: '电导率(μS/cm)', width: '120' }
+    ]
+    
+    tableData.value = [
+      {
+        date: '2023-01-01 08:00',
+        temperature: '12.5',
+        pH: '6.8',
+        O2: '4.2',
+        NTU: '12.3',
+        uS: '280',
+        suggestion: '水质各项指标正常'
+      },
+      {
+        date: '2023-01-01 12:00',
+        temperature: '13.2',
+        pH: '6.7',
+        O2: '4.0',
+        NTU: '15.1',
+        uS: '295',
+        suggestion: '浊度较高，可能存在悬浮物污染，建议检查上游排放'
+      }
+    ]
+  } finally {
+    dataListLoading.value = false
+  }
 }
 
 function genSuggestion(row: WaterQualityRow): string {
@@ -205,23 +273,35 @@ function genSuggestion(row: WaterQualityRow): string {
 }
 
 function downloadCsv() {
+  // 获取所有列名
+  const headers = [...dynamicColumns.value.map(col => col.name), 'suggestion']
+  
   const csv =
-    'date,temperature,pH,O2,NTU,uS,suggestion\n' +
+    headers.join(',') + '\n' +
     tableData.value
       .map(
         (r) => 
-          `"${r.date}",${r.temperature},${r.pH},${r.O2},${r.NTU},${r.uS},"${r.suggestion || ''}"`
+          headers.map(header => 
+            `"${String(r[header] || '').replace(/"/g, '""')}"`
+          ).join(',')
       )
       .join('\n')
+      
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
   const link = document.createElement('a')
   link.href = URL.createObjectURL(blob)
   link.download = `water_quality_suggestion_${dayjs().format('YYYYMMDDHHmm')}.csv`
   link.click()
 }
+
+// 组件挂载时获取数据集列表
+onMounted(() => {
+  fetchDatasets()
+})
 </script>
 
 <style scoped>
+/* 样式保持不变 */
 .prediction-advice-container {
   padding: 20px;
   background: linear-gradient(135deg, #e0f7fa 0%, #f5f7fa 100%);
@@ -337,7 +417,7 @@ function downloadCsv() {
 }
 
 /* 表格动画 */
-.data-preview-table, .suggestion-table {
+.suggestion-table {
   border-radius: 8px;
   overflow: hidden;
   box-shadow: 0 4px 12px rgba(25, 118, 210, 0.1);
