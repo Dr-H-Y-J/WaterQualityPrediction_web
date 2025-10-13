@@ -9,11 +9,16 @@ require('dotenv').config();
 const userRoutes = require('./routes/userRoutes');
 const permissionRoutes = require('./routes/permissionRoutes');
 const rolePermissionRoutes = require('./routes/rolePermissionRoutes');
+const roleRoutes = require('./routes/roleRoutes');
 
 // 引入模型
 const User = require('./models/User');
 const Permission = require('./models/Permission');
+const Role = require('./models/Role');
 const RolePermission = require('./models/RolePermission');
+
+// 引入初始化脚本
+const initPermissionsAndRoles = require('./scripts/initData');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +38,7 @@ app.use(express.urlencoded({ extended: true })); // 解析URL编码请求体
 app.use('/api/users', userRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/role-permissions', rolePermissionRoutes);
+app.use('/api/roles', roleRoutes);
 
 // 健康检查端点
 app.get('/health', (req, res) => {
@@ -46,8 +52,11 @@ app.use((req, res) => {
 
 // 错误处理中间件
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: '服务器内部错误' });
+  console.error('全局错误处理:', err.stack);
+  res.status(500).json({ 
+    message: '服务器内部错误',
+    error: process.env.NODE_ENV === 'development' ? err.message : {}
+  });
 });
 
 // 初始化数据库表和插入初始数据
@@ -56,11 +65,16 @@ const initDatabase = async () => {
     // 创建表
     await User.createTable();
     await Permission.createTable();
+    await Role.createTable();
+    await Role.createUserRoleTable();
     await RolePermission.createTable();
     
     console.log('数据库表初始化完成');
+    
+    // 插入初始数据
+    await initPermissionsAndRoles();
   } catch (error) {
-    console.error('数据库表初始化失败:', error);
+    console.error('数据库初始化失败:', error);
   }
 };
 

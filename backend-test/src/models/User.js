@@ -20,7 +20,7 @@ class User {
         username VARCHAR(50) UNIQUE NOT NULL,
         email VARCHAR(100),
         password_hash VARCHAR(255) NOT NULL,
-        role VARCHAR(20) NOT NULL,
+        role VARCHAR(20) NOT NULL DEFAULT 'user',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       )
@@ -41,20 +41,20 @@ class User {
         'SELECT * FROM users WHERE username = ?',
         [username]
       );
-      return rows[0];
+      return rows[0] || null;
     } catch (error) {
       console.error('Error finding user by username:', error);
       throw error;
     }
   }
-
+  
   // 创建新用户
   static async create(userData) {
     const { username, email, password_hash, role } = userData;
     try {
       const [result] = await promisePool.execute(
         'INSERT INTO users (username, email, password_hash, role) VALUES (?, ?, ?, ?)',
-        [username, email, password_hash, role]
+        [username, email, password_hash, role || 'user']
       );
       return result.insertId;
     } catch (error) {
@@ -63,13 +63,38 @@ class User {
     }
   }
 
-  // 获取所有用户
-  static async findAll() {
+  // 获取所有用户（支持分页）
+  static async findAll(page = 1, limit = 20) {
     try {
-      const [rows] = await promisePool.execute('SELECT id, username, email, role, created_at FROM users');
+      // 确保参数是数字类型
+      const pageNum = parseInt(page);
+      const limitNum = parseInt(limit);
+      const offset = (pageNum - 1) * limitNum;
+      
+      console.log('执行用户查询:', { pageNum, limitNum, offset });
+      
+      // 使用字符串拼接而不是参数化查询来避免参数类型问题
+      const query = `SELECT id, username, email, role, created_at FROM users ORDER BY id LIMIT ${limitNum} OFFSET ${offset}`;
+      const [rows] = await promisePool.execute(query);
+      
+      console.log('查询返回行数:', rows.length);
       return rows;
     } catch (error) {
       console.error('Error fetching users:', error);
+      console.error('SQL Error Code:', error.errno);
+      console.error('SQL Message:', error.sqlMessage);
+      throw error;
+    }
+  }
+
+  // 获取用户总数
+  static async count() {
+    try {
+      const [rows] = await promisePool.execute('SELECT COUNT(*) as count FROM users');
+      console.log('用户总数:', rows[0].count);
+      return rows[0].count;
+    } catch (error) {
+      console.error('Error counting users:', error);
       throw error;
     }
   }

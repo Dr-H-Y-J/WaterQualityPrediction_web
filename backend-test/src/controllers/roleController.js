@@ -7,11 +7,10 @@ const getAllRoles = async (req, res) => {
   try {
     const roles = await Role.findAll();
     
-    // 为每个角色添加用户和权限信息
+    // 为每个角色添加权限和用户信息
     const rolesWithDetails = await Promise.all(roles.map(async (role) => {
-      const users = await Role.getUsersByRoleId(role.id);
       const permissions = await RolePermission.findByRole(role.name);
-      
+      const users = await Role.getUsersByRoleId(role.id);
       return {
         ...role,
         userIds: users.map(user => user.id),
@@ -38,12 +37,12 @@ const createRole = async (req, res) => {
   try {
     const { name, description, permissions, userIds } = req.body;
     
-    // 检查角色名是否已存在
+    // 检查角色是否已存在
     const existingRole = await Role.findByName(name);
     if (existingRole) {
       return res.status(400).json({
         success: false,
-        message: '角色名已存在'
+        message: '角色名称已存在'
       });
     }
     
@@ -60,7 +59,7 @@ const createRole = async (req, res) => {
       await Role.assignUsersToRole(roleId, userIds);
     }
     
-    // 获取创建的角色详情
+    // 获取创建后的角色详情
     const newRole = await Role.findById(roleId);
     const users = await Role.getUsersByRoleId(roleId);
     const rolePermissions = await RolePermission.findByRole(name);
@@ -179,6 +178,7 @@ const deleteRole = async (req, res) => {
   }
 };
 
+// 确保只导出实际存在的函数
 module.exports = {
   getAllRoles,
   createRole,

@@ -3,6 +3,8 @@ const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
+const path = require('path');
+
 require('dotenv').config();
 
 // 引入路由
@@ -10,6 +12,8 @@ const userRoutes = require('./routes/userRoutes');
 const permissionRoutes = require('./routes/permissionRoutes');
 const rolePermissionRoutes = require('./routes/rolePermissionRoutes');
 const roleRoutes = require('./routes/roleRoutes');
+// 新增水质数据路由
+const waterQualityRoutes = require('./routes/waterQualityRoutes');
 
 // 引入模型
 const User = require('./models/User');
@@ -39,6 +43,8 @@ app.use('/api/users', userRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/role-permissions', rolePermissionRoutes);
 app.use('/api/roles', roleRoutes);
+// 新增水质数据路由
+app.use('/api', waterQualityRoutes);
 
 // 健康检查端点
 app.get('/health', (req, res) => {
@@ -52,19 +58,21 @@ app.use((req, res) => {
 
 // 错误处理中间件
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: '服务器内部错误' });
+  console.error('全局错误处理:', err.stack);
+  res.status(500).json({ 
+    message: '服务器内部错误',
+    error: process.env.NODE_ENV === 'development' ? err.message : {}
+  });
 });
 
-// 初始化数据库表和插入初始数据
 // 初始化数据库表和插入初始数据
 const initDatabase = async () => {
   try {
     // 创建表
     await User.createTable();
     await Permission.createTable();
-    await Role.createTable();        // 添加这一行
-    await Role.createUserRoleTable(); // 添加这一行
+    await Role.createTable();
+    await Role.createUserRoleTable();
     await RolePermission.createTable();
     
     console.log('数据库表初始化完成');
