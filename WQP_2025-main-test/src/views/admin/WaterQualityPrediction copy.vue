@@ -227,6 +227,7 @@
                 >
                   <el-option label="水质预测模型-LSTM" value="LSTM" />
                   <el-option label="水质预测模型-RNN" value="RNN" />
+                  <el-option label="水质预测模型-R-Informer" value="R-Informer" />
                 </el-select>
               </el-form-item>
 
@@ -267,7 +268,7 @@
                   detectionConfig.weights
                 }}</el-descriptions-item>
                 <el-descriptions-item label="总数据行数">{{
-                  3467
+                  totalDataRows
                 }}</el-descriptions-item>
               </el-descriptions>
 
@@ -354,39 +355,43 @@
         </el-button>
       </div>
     </el-card>
-
-    <!-- 数据预览对话框 -->
-    <el-dialog
-      v-model="previewDialogVisible"
-      title="数据预览"
-      width="80%"
-      top="5vh"
-    >
-      <el-table 
-        :data="previewDataList" 
-        height="400"
-        v-loading="previewLoading"
+<!-- 数据预览对话框 -->
+      <el-dialog
+        v-model="previewDialogVisible"
+        title="数据预览"
+        width="80%"
+        top="5vh"
       >
-        <el-table-column prop="date" label="日期" />
-        <el-table-column prop="temperature" label="温度(℃)" />
-        <el-table-column prop="pH" label="pH值" />
-        <el-table-column prop="O2" label="溶解氧(mg/L)" />
-        <el-table-column prop="NTU" label="浊度(NTU)" />
-        <el-table-column prop="uS" label="电导率(μS/cm)" />
-      </el-table>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="previewDialogVisible = false">关闭</el-button>
-        </span>
-      </template>
-    </el-dialog>
+        <el-table 
+          :data="previewDataList" 
+          height="400"
+          v-loading="previewLoading"
+        >
+          <!-- 动态生成列 -->
+          <el-table-column 
+            v-for="(value, key) in previewDataList.length > 0 ? previewDataList[0] : {}" 
+            :key="key"
+            :prop="key"
+            :label="key"
+          />
+        </el-table>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="previewDialogVisible = false">关闭</el-button>
+          </span>
+        </template>
+      </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Warning, Loading, UploadFilled, Download } from '@element-plus/icons-vue'
+import axios from 'axios'
+
+// API基础URL
+const API_BASE_URL = '/api'
 
 // 步骤控制
 const step = ref(1)
@@ -397,17 +402,11 @@ const detectionCompleted = ref(false) // 新增：标记预测是否完成
 // 数据选择相关
 const dataTab = ref('select') // 'upload' 或 'select'，默认改为选择数据
 const selectedExistingData = ref([]) // 选择的已有数据
-const existingDataList = ref([
-  { id: 1, name: '2023年水质数据', description: '2023年全年水质监测数据', createTime: '2023-12-31 23:59:59', dataCount: 8760 },
-  { id: 2, name: '春季水质样本', description: '春季水质监测样本数据', createTime: '2024-03-31 23:59:59', dataCount: 2160 },
-  { id: 3, name: '夏季水质样本', description: '夏季水质监测样本数据', createTime: '2024-06-30 23:59:59', dataCount: 2200 },
-  { id: 4, name: '秋季水质样本', description: '秋季水质监测样本数据', createTime: '2024-09-30 23:59:59', dataCount: 2100 },
-  { id: 5, name: '冬季水质样本', description: '冬季水质监测样本数据', createTime: '2024-12-31 23:59:59', dataCount: 2000 },
-])
+const existingDataList = ref([])
 const dataListLoading = ref(false)
 const currentPage = ref(1)
 const pageSize = ref(10)
-const totalDataItems = ref(25)
+const totalDataItems = ref(0)
 
 // 预览相关
 const previewDialogVisible = ref(false)
@@ -483,6 +482,21 @@ const mockWeights = {
       value: 'rnn_stable',
       accuracy: '92.3%',
       trainDate: '2024-08-11',
+    },
+  ],
+  'R-Informer': [
+    {
+      label: '水质预测 R-Informer v1.0',
+      value: 'r_informer_v1_0',
+      accuracy: '97.2%',
+      trainDate: '2024-09-15',
+    },
+    { label: '水质预测 R-Informer best_model', value: 'r_informer_best', accuracy: '98.1%', trainDate: '2024-09-20' },
+    {
+      label: '水质预测 R-Informer checkpoint_200',
+      value: 'r_informer_cp200',
+      accuracy: '96.8%',
+      trainDate: '2024-09-10',
     },
   ],
 }
@@ -609,7 +623,7 @@ const removeInvalidFiles = () => {
 
 // 获取权重信息
 const getWeightsInfo = (weightsValue) => {
-  const allWeights = [...(mockWeights.LSTM || []), ...(mockWeights.RNN || [])]
+  const allWeights = [...(mockWeights.LSTM || []), ...(mockWeights.RNN || []), ...(mockWeights['R-Informer'] || [])]
   const weight = allWeights.find((w) => w.value === weightsValue)
   if (!weight) return []
 
@@ -648,23 +662,99 @@ const handleDataSelectionChange = (selection) => {
   selectedExistingData.value = selection
 }
 
+// 获取数据集列表
+const fetchDatasets = async () => {
+  try {
+    dataListLoading.value = true
+    // 修改为实际存在的API端点，或者创建mock数据
+    const response = await axios.get(`${API_BASE_URL}/water-quality/datasets`)
+    existingDataList.value = response.data.datasets.map(item => ({
+      id: item.id,
+      name: item.table_name,
+      description: item.description || '暂无描述',
+      createTime: item.created_at || new Date().toISOString(),
+      dataCount: item.row_count || 0
+    }))
+    totalDataItems.value = response.data.total || response.data.datasets.length
+  } catch (error) {
+    console.error('获取数据集失败:', error)
+    // 使用mock数据作为备选方案
+    existingDataList.value = [
+      {
+        id: 1,
+        name: 'water_data_2023',
+        description: '2023年水质监测数据',
+        createTime: '2023-12-01 10:30:00',
+        dataCount: 8760
+      },
+      {
+        id: 2,
+        name: 'water_data_2024_q1',
+        description: '2024年第一季度水质数据',
+        createTime: '2024-04-01 14:15:00',
+        dataCount: 2160
+      }
+    ]
+    totalDataItems.value = existingDataList.value.length
+    ElMessage.warning('无法连接到数据服务，显示模拟数据')
+  } finally {
+    dataListLoading.value = false
+  }
+}
+
 // 预览数据
-const previewData = (dataItem) => {
-  previewDataItem.value = dataItem
+const previewData = async (dataItem) => {
   previewDialogVisible.value = true
   previewLoading.value = true
-  
-  // 模拟获取数据
-  setTimeout(() => {
+
+  try {
+    // 修改为实际的API端点
+    const response = await axios.get(`${API_BASE_URL}/water-quality/datasets/${dataItem.name}/preview`, {
+      params: { limit: 5 }
+    })
+    
+    // 确保数据格式正确
+    if (response.data && Array.isArray(response.data.rows)) {
+      previewDataList.value = response.data.rows.map(row => ({
+        date: row.date || '',
+        temperature: row.temperature !== undefined ? row.temperature : '',
+        pH: row.pH !== undefined ? row.pH : '',
+        O2: row.O2 !== undefined ? row.O2 : '',
+        NTU: row.NTU !== undefined ? row.NTU : '',
+        uS: row.uS !== undefined ? row.uS : ''
+      }))
+    } else {
+      throw new Error('数据格式不正确')
+    }
+    
+    ElMessage.success('数据加载成功')
+  } catch (error) {
+    console.error('加载数据失败:', error)
+    
+    // 提供模拟数据用于演示
     previewDataList.value = [
-      { date: '2023-01-01 00', temperature: '12.4', pH: '7.83', O2: '12.63', NTU: '8', uS: '254.7' },
-      { date: '2023-01-01 01', temperature: '12', pH: '7.84', O2: '13.43', NTU: '10.3', uS: '255.3' },
-      { date: '2023-01-01 02', temperature: '12', pH: '7.83', O2: '13.49', NTU: '9.7', uS: '255.5' },
-      { date: '2023-01-01 03', temperature: '12', pH: '7.83', O2: '13.33', NTU: '8.7', uS: '255.9' },
-      { date: '2023-01-01 04', temperature: '12.3', pH: '7.81', O2: '12.48', NTU: '7.6', uS: '254.9' },
+      {
+        date: '2024-01-01 00:00:00',
+        temperature: '18.5',
+        pH: '7.2',
+        O2: '8.1',
+        NTU: '5.2',
+        uS: '450'
+      },
+      {
+        date: '2024-01-01 01:00:00',
+        temperature: '18.3',
+        pH: '7.1',
+        O2: '8.3',
+        NTU: '5.1',
+        uS: '448'
+      }
     ]
+    
+    ElMessage.warning('无法获取实际数据，显示模拟数据')
+  } finally {
     previewLoading.value = false
-  }, 800)
+  }
 }
 
 // 分页相关
@@ -683,78 +773,44 @@ const startDetection = async () => {
   try {
     detecting.value = true
 
-    // 模拟检测过程
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-
-    // 生成模拟检测结果
-    const totalSamples = totalDataRows.value
-    const faultCount = Math.floor(totalSamples * 0.05) // 假设5%的数据点异常
-    const faultRate = (faultCount / totalSamples * 100)
-
-    // 生成预览数据 - 使用固定的前五行数据
-    const previewData = [
-      {
-        date: '2025-04-01 00',
-        temperature: '18.2',
-        pH: '7.2',
-        O2: '5.2',
-        NTU: '15.3',
-        uS: '1850',
-        quality: '警告'
-      },
-      {
-        date: '2025-04-01 01',
-        temperature: '18.4',
-        pH: '7.1',
-        O2: '5.1',
-        NTU: '16.2',
-        uS: '1875',
-        quality: '异常'
-      },
-      {
-        date: '2025-04-01 02',
-        temperature: '18.6',
-        pH: '7.0',
-        O2: '4.9',
-        NTU: '17.1',
-        uS: '1902',
-        quality: '异常'
-      },
-      {
-        date: '2025-04-01 03',
-        temperature: '18.8',
-        pH: '6.9',
-        O2: '4.8',
-        NTU: '18.3',
-        uS: '1930',
-        quality: '异常'
-      },
-      {
-        date: '2025-04-01 04',
-        temperature: '18.7',
-        pH: '6.8',
-        O2: '4.7',
-        NTU: '19.2',
-        uS: '1955',
-        quality: '异常'
-      }
-    ]
-
-    detectionResults.value = {
-      totalSamples,
-      faultCount,
-      faultRate,
-      processingTime: Math.floor(Math.random() * 2000) + 1000,
-      previewData,
-      allData: [] // 这里会包含所有处理后的数据
+    // 获取选中的数据表名
+    const tableName = dataTab.value === 'select' 
+      ? selectedExistingData.value[0]?.name 
+      : 'water_quality_new_data' // 默认表名
+    
+    if (!tableName) {
+      ElMessage.error('请选择数据表')
+      detecting.value = false
+      return
     }
 
-    // 设置预测完成标志
-    detectionCompleted.value = true
-    
-    ElMessage.success('预测完成！')
+    // 调用后端预测接口
+    const response = await axios.post(`${API_BASE_URL}/water-quality/predict`, {
+      table_name: tableName,
+      prediction_hours: detectionOptions.predictionHours,
+      model_type: detectionConfig.model,
+      weights: detectionConfig.weights
+    })
+
+    if (response.data.success) {
+      // 处理预测结果
+      detectionResults.value = {
+        totalSamples: response.data.predictions.length,
+        predictions: response.data.predictions,
+        processingTime: Date.now(),
+        previewData: response.data.predictions.slice(0, 5) // 只显示前5行预览
+      }
+      
+      ElMessage.success('预测完成！')
+    } else {
+      throw new Error(response.data.error)
+    }
   } catch (error) {
-    ElMessage.error('预测过程中出现错误')
+    if (error.response?.data?.error === '模型服务不可用') {
+      ElMessage.error('预测模型服务当前不可用，请稍后重试')
+    } else {
+      ElMessage.error('预测过程中出现错误: ' + (error.response?.data?.message || error.message))
+    }
     console.error(error)
   } finally {
     detecting.value = false
@@ -795,6 +851,11 @@ const resetDetection = () => {
   detectionResults.value = null
   detectionCompleted.value = false
 }
+
+// 组件挂载时获取数据集列表
+onMounted(() => {
+  fetchDatasets()
+})
 </script>
 
 <style scoped>

@@ -8,7 +8,7 @@
       </template>
 
       <el-steps :active="step - 1" finish-status="success" simple>
-        <el-step title="数据选择/上传" />
+        <el-step title="数据选择" />
         <el-step title="选择模型" />
         <el-step title="水质预测" />
       </el-steps>
@@ -16,199 +16,41 @@
       <div class="step-content">
         <transition name="el-fade-in" mode="out-in">
           <div :key="step">
-            <!-- Step 1: Data Selection/Upload -->
+            <!-- Step 1: Data Selection -->
             <div v-if="step === 1" class="data-upload-step">
-              <el-tabs v-model="dataTab" type="border-card">
-                <!-- 数据选择标签页 -->
-                <el-tab-pane label="选择已有数据" name="select">
-                  <div class="existing-data-section">
-                    <el-table 
-                      :data="existingDataList" 
-                      style="width: 100%" 
-                      v-loading="dataListLoading"
-                      @selection-change="handleDataSelectionChange"
-                    >
-                      <el-table-column type="selection" width="55" />
-                      <el-table-column prop="name" label="数据名称" />
-                      <el-table-column prop="description" label="描述" />
-                      <el-table-column prop="createTime" label="创建时间" width="180" />
-                      <el-table-column prop="dataCount" label="数据量" width="100" />
-                      <el-table-column label="操作" width="120">
-                        <template #default="{ row }">
-                          <el-button size="small" type="primary" @click="previewData(row)">
-                            预览
-                          </el-button>
-                        </template>
-                      </el-table-column>
-                    </el-table>
-                    
-                    <div class="data-pagination">
-                      <el-pagination
-                        v-model:current-page="currentPage"
-                        v-model:page-size="pageSize"
-                        :page-sizes="[10, 20, 50]"
-                        :total="totalDataItems"
-                        layout="total, sizes, prev, pager, next, jumper"
-                        @size-change="handleSizeChange"
-                        @current-change="handleCurrentChange"
-                      />
-                    </div>
-                  </div>
-                </el-tab-pane>
-                
-                <!-- 数据上传标签页 -->
-                <el-tab-pane label="上传数据" name="upload">
-                  <!-- 格式说明 -->
-                  <el-card shadow="never" class="format-info-card">
-                    <template #header>
-                      <div class="format-header">
-                        <el-icon><document /></el-icon>
-                        <span>数据格式要求</span>
-                      </div>
+              <div class="existing-data-section">
+                <el-table 
+                  :data="existingDataList" 
+                  style="width: 100%" 
+                  v-loading="dataListLoading"
+                  @selection-change="handleDataSelectionChange"
+                >
+                  <el-table-column type="selection" width="55" />
+                  <el-table-column prop="name" label="数据名称" />
+                  <el-table-column prop="description" label="描述" />
+                  <el-table-column prop="createTime" label="创建时间" width="180" />
+                  <el-table-column prop="dataCount" label="数据量" width="100" />
+                  <el-table-column label="操作" width="120">
+                    <template #default="{ row }">
+                      <el-button size="small" type="primary" @click="previewData(row)">
+                        预览
+                      </el-button>
                     </template>
-                    
-                    <div class="format-requirements">
-                      <div class="requirement-item">
-                        <h4>文件格式：</h4>
-                        <p>仅支持 CSV 格式文件，编码为 UTF-8</p>
-                      </div>
-                      
-                      <div class="requirement-item">
-                        <h4>数据结构：</h4>
-                        <div class="data-structure-section">
-                          <!-- 左侧：列定义表格 -->
-                          <div class="table-structure">
-                            <el-table :data="requiredColumns" size="small" border>
-                              <el-table-column prop="name" label="列名" width="150" />
-                              <el-table-column prop="label" label="说明" width="120" />
-                              <el-table-column prop="type" label="数据类型" width="100">
-                                <template #default="{ row }">
-                                  <el-tag size="small" :type="row.type === 'number' ? 'warning' : 'info'">
-                                    {{ row.type === 'number' ? '数字' : '文本' }}
-                                  </el-tag>
-                                </template>
-                              </el-table-column>
-                            </el-table>
-                          </div>
-
-                          <!-- 右侧：实例数据表格 -->
-                          <div class="example-table">
-                            <h5>实例数据：</h5>
-                            <el-table :data="exampleData" size="small" border stripe>
-                              <el-table-column prop="date" label="date" width="140">
-                                <template #default="{ row }">
-                                  <span class="number-value">{{ row.date }}</span>
-                                </template>
-                              </el-table-column>
-                              <el-table-column prop="temperature" label="temperature" width="100">
-                                <template #default="{ row }">
-                                  <span class="number-value">{{ row.temperature }}</span>
-                                </template>
-                              </el-table-column>
-                              <el-table-column prop="pH" label="pH" width="80">
-                                <template #default="{ row }">
-                                  <span class="number-value">{{ row.pH }}</span>
-                                </template>
-                              </el-table-column>
-                              <el-table-column prop="O2" label="O2" width="80">
-                                <template #default="{ row }">
-                                  <span class="number-value">{{ row.O2 }}</span>
-                                </template>
-                              </el-table-column>
-                              <el-table-column prop="NTU" label="NTU" width="80">
-                                <template #default="{ row }">
-                                  <span class="number-value">{{ row.NTU }}</span>
-                                </template>
-                              </el-table-column>
-                              <el-table-column prop="uS" label="uS" width="80">
-                                <template #default="{ row }">
-                                  <span class="number-value">{{ row.uS }}</span>
-                                </template>
-                              </el-table-column>
-                            </el-table>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div class="requirement-item">
-                        <h4>数据要求：</h4>
-                        <ul class="requirements-list">
-                          <li>日期格式为 YYYY-MM-DD HH，小时为00-23</li>
-                          <li>温度单位为摄氏度(℃)</li>
-                          <li>pH值范围通常在0-14之间</li>
-                          <li>溶解氧(O2)单位为mg/L</li>
-                          <li>浊度(NTU)单位为NTU</li>
-                          <li>电导率(uS)单位为微西门子/厘米(μS/cm)</li>
-                          <li>文件编码必须为UTF-8</li>
-                        </ul>
-                      </div>
-                    </div>
-                  </el-card>
-
-                  <!-- 文件上传区域 -->
-                  <div class="upload-section">
-                    <el-upload
-                      :auto-upload="false"
-                      :show-file-list="false"
-                      :on-change="handleFileChange"
-                      accept=".csv"
-                      drag
-                    >
-                      <div class="upload-dragger">
-                        <el-icon class="upload-icon"><upload-filled /></el-icon>
-                        <div class="upload-text">
-                          <p>将CSV文件拖拽到此处，或<em>点击选择文件</em></p>
-                          <p class="upload-tip">单个文件不超过100MB</p>
-                          <p class="upload-format">格式要求：date,temperature,pH,O2,NTU,uS</p>
-                        </div>
-                      </div>
-                    </el-upload>
-                  </div>
-
-                  <!-- 文件信息 -->
-                  <div v-if="selectedFiles.length > 0" class="file-info-section">
-                    <el-card shadow="never" class="file-info-card">
-                      <div class="file-info-header">
-                        <el-icon class="file-info-icon">
-                          <document v-if="selectedFiles[0].status === 'valid'" />
-                          <warning v-else-if="selectedFiles[0].status === 'invalid'" />
-                          <loading v-else />
-                        </el-icon>
-                        <div class="file-info-details">
-                          <div class="file-info-name">{{ selectedFiles[0].name }}</div>
-                          <div class="file-info-meta">
-                            <span class="file-size">{{ formatFileSize(selectedFiles[0].size) }}</span>
-                            <el-tag
-                              size="small"
-                              :type="selectedFiles[0].status === 'valid' ? 'success' : selectedFiles[0].status === 'invalid' ? 'danger' : 'info'"
-                            >
-                              {{ selectedFiles[0].status === 'valid' ? '验证通过' : selectedFiles[0].status === 'invalid' ? '验证失败' : '验证中' }}
-                            </el-tag>
-                            <span v-if="validationResults[selectedFiles[0].id]?.rows" class="data-rows">
-                              {{ validationResults[selectedFiles[0].id].rows }} 行数据
-                            </span>
-                          </div>
-                        </div>
-                        <el-button
-                          size="small"
-                          type="danger"
-                          @click="clearAllFiles"
-                        >
-                          删除文件
-                        </el-button>
-                      </div>
-
-                      <!-- 验证结果详情 -->
-                      <div v-if="validationResults[selectedFiles[0].id]" class="validation-details">
-                        <div v-if="selectedFiles[0].status === 'invalid'" class="error-message">
-                          <el-icon><warning /></el-icon>
-                          <span>{{ validationResults[selectedFiles[0].id].error }}</span>
-                        </div>
-                      </div>
-                    </el-card>
-                  </div>
-                </el-tab-pane>
-              </el-tabs>
+                  </el-table-column>
+                </el-table>
+                
+                <div class="data-pagination">
+                  <el-pagination
+                    v-model:current-page="currentPage"
+                    v-model:page-size="pageSize"
+                    :page-sizes="[10, 20, 50]"
+                    :total="totalDataItems"
+                    layout="total, sizes, prev, pager, next, jumper"
+                    @size-change="handleSizeChange"
+                    @current-change="handleCurrentChange"
+                  />
+                </div>
+              </div>
             </div>
 
             <!-- Step 2: Model Selection -->
@@ -227,6 +69,7 @@
                 >
                   <el-option label="水质预测模型-LSTM" value="LSTM" />
                   <el-option label="水质预测模型-RNN" value="RNN" />
+                  <el-option label="水质预测模型-R-Informer" value="R-Informer" />
                 </el-select>
               </el-form-item>
 
@@ -252,14 +95,11 @@
             <div v-if="step === 3" class="detection-config">
               <el-descriptions title="确认预测信息" :column="1" border>
                 <el-descriptions-item label="数据来源">
-                  {{ dataTab === 'upload' ? '文件上传' : '已有数据' }}
+                  已有数据
                 </el-descriptions-item>
-                <el-descriptions-item v-if="dataTab === 'select' && selectedExistingData.length > 0" label="选择的数据">
+                <el-descriptions-item v-if="selectedExistingData.length > 0" label="选择的数据">
                   {{ selectedExistingData.map(item => item.name).join(', ') }}
                 </el-descriptions-item>
-                <el-descriptions-item v-if="dataTab === 'upload' && validFilesCount > 0" label="数据文件">{{
-                  validFilesCount
-                }} 个有效文件</el-descriptions-item>
                 <el-descriptions-item label="模型类型">{{
                   detectionConfig.model
                 }}</el-descriptions-item>
@@ -354,32 +194,35 @@
         </el-button>
       </div>
     </el-card>
+<!-- 数据预览对话框 -->
+     <!-- 修改数据预览对话框中的表格部分 -->
+<!-- 修改数据预览对话框中的表格部分 -->
 
-    <!-- 数据预览对话框 -->
-    <el-dialog
-      v-model="previewDialogVisible"
-      title="数据预览"
-      width="80%"
-      top="5vh"
-    >
-      <el-table 
-        :data="previewDataList" 
-        height="400"
-        v-loading="previewLoading"
+ <el-dialog
+        v-model="previewDialogVisible"
+        title="数据预览"
+        width="80%"
+        top="5vh"
       >
-        <el-table-column prop="date" label="日期" />
-        <el-table-column prop="temperature" label="温度(℃)" />
-        <el-table-column prop="pH" label="pH值" />
-        <el-table-column prop="O2" label="溶解氧(mg/L)" />
-        <el-table-column prop="NTU" label="浊度(NTU)" />
-        <el-table-column prop="uS" label="电导率(μS/cm)" />
-      </el-table>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="previewDialogVisible = false">关闭</el-button>
-        </span>
-      </template>
-    </el-dialog>
+        <el-table 
+          :data="previewDataList" 
+          height="400"
+          v-loading="previewLoading"
+        >
+          <!-- 动态生成列 -->
+          <el-table-column 
+            v-for="(value, key) in previewDataList.length > 0 ? previewDataList[0] : {}" 
+            :key="key"
+            :prop="key"
+            :label="key"
+          />
+        </el-table>
+        <template #footer>
+          <span class="dialog-footer">
+            <el-button @click="previewDialogVisible = false">关闭</el-button>
+          </span>
+        </template>
+      </el-dialog>
   </div>
 </template>
 
@@ -399,7 +242,6 @@ const detecting = ref(false)
 const detectionCompleted = ref(false) // 新增：标记预测是否完成
 
 // 数据选择相关
-const dataTab = ref('select') // 'upload' 或 'select'，默认改为选择数据
 const selectedExistingData = ref([]) // 选择的已有数据
 const existingDataList = ref([])
 const dataListLoading = ref(false)
@@ -412,10 +254,6 @@ const previewDialogVisible = ref(false)
 const previewDataItem = ref(null)
 const previewDataList = ref([])
 const previewLoading = ref(false)
-
-// 数据上传相关状态
-const selectedFiles = ref([])
-const validationResults = ref({})
 
 // 检测配置
 const detectionConfig = reactive({
@@ -442,15 +280,7 @@ const requiredColumns = [
   { name: 'uS', label: '电导率(μS/cm)', type: 'number' }
 ]
 
-// 示例数据
-const exampleData = [
-  { date: '2020-01-01 00', temperature: '12.4', pH: '7.83', O2: '12.63', NTU: '8', uS: '254.7' },
-  { date: '2020-01-01 01', temperature: '12', pH: '7.84', O2: '13.43', NTU: '10.3', uS: '255.3' },
-  { date: '2020-01-01 02', temperature: '12', pH: '7.83', O2: '13.49', NTU: '9.7', uS: '255.5' },
-  { date: '2020-01-01 03', temperature: '12', pH: '7.83', O2: '13.33', NTU: '8.7', uS: '255.9' },
-  { date: '2020-01-01 04', temperature: '12.3', pH: '7.81', O2: '12.48', NTU: '7.6', uS: '254.9' },
-  { date: '2020-01-01 05', temperature: '12', pH: '7.81', O2: '13.23', NTU: '10.3', uS: '255.6' }
-]
+
 
 // Mock data for available weights
 const mockWeights = {
@@ -483,6 +313,21 @@ const mockWeights = {
       trainDate: '2024-08-11',
     },
   ],
+  'R-Informer': [
+    {
+      label: '水质预测 R-Informer v1.0',
+      value: 'r_informer_v1_0',
+      accuracy: '97.2%',
+      trainDate: '2024-09-15',
+    },
+    { label: '水质预测 R-Informer best_model', value: 'r_informer_best', accuracy: '98.1%', trainDate: '2024-09-20' },
+    {
+      label: '水质预测 R-Informer checkpoint_200',
+      value: 'r_informer_cp200',
+      accuracy: '96.8%',
+      trainDate: '2024-09-10',
+    },
+  ],
 }
 
 // 计算属性
@@ -491,31 +336,14 @@ const availableWeights = computed(() => {
   return mockWeights[detectionConfig.model] || []
 })
 
-const validFilesCount = computed(() => {
-  return selectedFiles.value.filter(file => file.status === 'valid').length
-})
-
-const invalidFilesCount = computed(() => {
-  return selectedFiles.value.filter(file => file.status === 'invalid').length
-})
-
 const totalDataRows = computed(() => {
-  return selectedFiles.value
-    .filter(file => file.status === 'valid')
-    .reduce((total, file) => total + (validationResults.value[file.id]?.rows || 0), 0)
+  return selectedExistingData.value.reduce((total, item) => total + item.dataCount, 0)
 })
 
 const canGoNext = computed(() => {
   if (step.value === 1) {
-    // 如果是上传数据标签页，需要有有效文件
-    if (dataTab.value === 'upload') {
-      return validFilesCount.value > 0
-    }
-    // 如果是选择数据标签页，需要有选中数据
-    else if (dataTab.value === 'select') {
-      return selectedExistingData.value.length > 0
-    }
-    return false
+    // 需要有选中数据
+    return selectedExistingData.value.length > 0
   }
   if (step.value === 2) {
     // 修改：只有选择了模型和权重才能下一步
@@ -526,88 +354,14 @@ const canGoNext = computed(() => {
 
 const canStartDetection = computed(() => {
   // 检查数据来源
-  const hasData = (dataTab.value === 'upload' && validFilesCount.value > 0) || 
-                  (dataTab.value === 'select' && selectedExistingData.value.length > 0)
+  const hasData = selectedExistingData.value.length > 0
   
   return hasData && detectionConfig.model && detectionConfig.weights
 })
 
-// 文件大小格式化
-const formatFileSize = (bytes) => {
-  if (bytes === 0) return '0 B'
-  const k = 1024
-  const sizes = ['B', 'KB', 'MB', 'GB']
-  const i = Math.floor(Math.log(bytes) / Math.log(k))
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
-}
-
-// 文件选择处理
-const handleFileChange = (uploadFile) => {
-  const file = uploadFile.raw
-  
-  // 检查文件格式
-  if (!file.name.toLowerCase().endsWith('.csv')) {
-    ElMessage.error('只支持CSV格式文件')
-    return
-  }
-
-  // 检查文件大小（100MB限制）
-  const maxSize = 100 * 1024 * 1024
-  if (file.size > maxSize) {
-    ElMessage.error('文件大小不能超过100MB')
-    return
-  }
-
-  // 如果已有文件，先清除
-  if (selectedFiles.value.length > 0) {
-    clearAllFiles()
-  }
-
-  const fileItem = {
-    id: Date.now() + Math.random(),
-    file: file,
-    name: file.name,
-    size: file.size,
-    status: 'valid'
-  }
-
-  selectedFiles.value.push(fileItem)
-  
-  // 直接标记为验证通过，不进行实际验证
-  validationResults.value[fileItem.id] = {
-    valid: true,
-    rows: 0, // 暂时设为0，实际使用时再计算
-    preview: [] // 空预览
-  }
-  
-  ElMessage.success(`${file.name} 上传成功`)
-}
-
-// 删除文件
-const removeFile = (fileId) => {
-  selectedFiles.value = selectedFiles.value.filter(file => file.id !== fileId)
-  delete validationResults.value[fileId]
-}
-
-// 清空所有文件
-const clearAllFiles = () => {
-  selectedFiles.value = []
-  validationResults.value = {}
-}
-
-// 移除所有无效文件
-const removeInvalidFiles = () => {
-  const invalidFiles = selectedFiles.value.filter(file => file.status === 'invalid')
-  invalidFiles.forEach(file => {
-    delete validationResults.value[file.id]
-  })
-  selectedFiles.value = selectedFiles.value.filter(file => file.status !== 'invalid')
-  ElMessage.success(`已移除 ${invalidFiles.length} 个无效文件`)
-}
-
 // 获取权重信息
 const getWeightsInfo = (weightsValue) => {
-  const allWeights = [...(mockWeights.LSTM || []), ...(mockWeights.RNN || [])]
+  const allWeights = [...(mockWeights.LSTM || []), ...(mockWeights.RNN || []), ...(mockWeights['R-Informer'] || [])]
   const weight = allWeights.find((w) => w.value === weightsValue)
   if (!weight) return []
 
@@ -650,36 +404,96 @@ const handleDataSelectionChange = (selection) => {
 const fetchDatasets = async () => {
   try {
     dataListLoading.value = true
-    const response = await axios.get(`${API_BASE_URL}/datasets`)
+    // 修改为实际存在的API端点，或者创建mock数据
+    const response = await axios.get(`${API_BASE_URL}/water-quality/datasets`)
     existingDataList.value = response.data.datasets.map(item => ({
       id: item.id,
       name: item.table_name,
-      description: item.description,
-      createTime: item.created_at,
-      dataCount: item.row_count
+      description: item.description || '暂无描述',
+      createTime: item.created_at || new Date().toISOString(),
+      dataCount: item.row_count || 0
     }))
-    totalDataItems.value = response.data.total
+    totalDataItems.value = response.data.total || response.data.datasets.length
   } catch (error) {
-    ElMessage.error('获取数据集失败')
-    console.error(error)
+    console.error('获取数据集失败:', error)
+    // 使用mock数据作为备选方案
+    existingDataList.value = [
+      {
+        id: 1,
+        name: 'water_data_2023',
+        description: '2023年水质监测数据',
+        createTime: '2023-12-01 10:30:00',
+        dataCount: 8760
+      },
+      {
+        id: 2,
+        name: 'water_data_2024_q1',
+        description: '2024年第一季度水质数据',
+        createTime: '2024-04-01 14:15:00',
+        dataCount: 2160
+      }
+    ]
+    totalDataItems.value = existingDataList.value.length
+    ElMessage.warning('无法连接到数据服务，显示模拟数据')
   } finally {
     dataListLoading.value = false
   }
 }
 
 // 预览数据
+// 预览数据
 const previewData = async (dataItem) => {
   previewDialogVisible.value = true
   previewLoading.value = true
 
   try {
-    const response = await axios.get(`${API_BASE_URL}/datasets/${dataItem.name}`, {
-      params: { limit: 5 }
+    // 修改为实际的API端点
+    const response = await axios.get(`${API_BASE_URL}/water-quality/datasets/${dataItem.name}/preview`, {
+      params: { limit: 50 }
     })
-    previewDataList.value = response.data.rows
+    
+    // 确保数据格式正确并映射字段
+    if (response.data && Array.isArray(response.data.rows)) {
+      previewDataList.value = response.data.rows.map(row => {
+        // 确保所有字段都正确映射
+        const mappedRow = {}
+        
+        // 遍历每一行的所有属性
+        Object.keys(row).forEach(key => {
+          mappedRow[key] = row[key]
+        })
+        
+        return mappedRow
+      })
+    } else {
+      throw new Error('数据格式不正确')
+    }
+    
+    ElMessage.success('数据加载成功')
   } catch (error) {
-    ElMessage.error('加载数据失败')
-    console.error(error)
+    console.error('加载数据失败:', error)
+    
+    // 提供模拟数据用于演示
+    previewDataList.value = [
+      {
+        date: '2024-01-01 00:00:00',
+        temperature: '18.5',
+        pH: '7.2',
+        O2: '8.1',
+        NTU: '5.2',
+        uS: '450'
+      },
+      {
+        date: '2024-01-01 01:00:00',
+        temperature: '18.3',
+        pH: '7.1',
+        O2: '8.3',
+        NTU: '5.1',
+        uS: '448'
+      }
+    ]
+    
+    ElMessage.warning('无法获取实际数据，显示模拟数据')
   } finally {
     previewLoading.value = false
   }
@@ -701,78 +515,42 @@ const startDetection = async () => {
   try {
     detecting.value = true
 
-    // 模拟检测过程
-    await new Promise((resolve) => setTimeout(resolve, 3000))
-
-    // 生成模拟检测结果
-    const totalSamples = totalDataRows.value
-    const faultCount = Math.floor(totalSamples * 0.05) // 假设5%的数据点异常
-    const faultRate = (faultCount / totalSamples * 100)
-
-    // 生成预览数据 - 使用固定的前五行数据
-    const previewData = [
-      {
-        date: '2025-04-01 00',
-        temperature: '18.2',
-        pH: '7.2',
-        O2: '5.2',
-        NTU: '15.3',
-        uS: '1850',
-        quality: '警告'
-      },
-      {
-        date: '2025-04-01 01',
-        temperature: '18.4',
-        pH: '7.1',
-        O2: '5.1',
-        NTU: '16.2',
-        uS: '1875',
-        quality: '异常'
-      },
-      {
-        date: '2025-04-01 02',
-        temperature: '18.6',
-        pH: '7.0',
-        O2: '4.9',
-        NTU: '17.1',
-        uS: '1902',
-        quality: '异常'
-      },
-      {
-        date: '2025-04-01 03',
-        temperature: '18.8',
-        pH: '6.9',
-        O2: '4.8',
-        NTU: '18.3',
-        uS: '1930',
-        quality: '异常'
-      },
-      {
-        date: '2025-04-01 04',
-        temperature: '18.7',
-        pH: '6.8',
-        O2: '4.7',
-        NTU: '19.2',
-        uS: '1955',
-        quality: '异常'
-      }
-    ]
-
-    detectionResults.value = {
-      totalSamples,
-      faultCount,
-      faultRate,
-      processingTime: Math.floor(Math.random() * 2000) + 1000,
-      previewData,
-      allData: [] // 这里会包含所有处理后的数据
+    // 获取选中的数据表名
+    const tableName = selectedExistingData.value[0]?.name 
+    
+    if (!tableName) {
+      ElMessage.error('请选择数据表')
+      detecting.value = false
+      return
     }
 
-    // 设置预测完成标志
-    detectionCompleted.value = true
-    
-    ElMessage.success('预测完成！')
+    // 调用后端预测接口
+    const response = await axios.post(`${API_BASE_URL}/water-quality/predict`, {
+      table_name: tableName,
+      prediction_hours: detectionOptions.predictionHours,
+      model_type: detectionConfig.model,
+      weights: detectionConfig.weights
+    })
+
+    if (response.data.success) {
+      // 处理预测结果
+      detectionResults.value = {
+        totalSamples: response.data.predictions.length,
+        predictions: response.data.predictions,
+        processingTime: Date.now(),
+        previewData: response.data.predictions.slice(0, 5) // 只显示前5行预览
+      }
+      
+      ElMessage.success('预测完成！')
+    } else {
+      throw new Error(response.data.error)
+    }
   } catch (error) {
-    ElMessage.error('预测过程中出现错误')
+    if (error.response?.data?.error === '模型服务不可用') {
+      ElMessage.error('预测模型服务当前不可用，请稍后重试')
+    } else {
+      ElMessage.error('预测过程中出现错误: ' + (error.response?.data?.message || error.message))
+    }
     console.error(error)
   } finally {
     detecting.value = false
@@ -849,221 +627,6 @@ onMounted(() => {
 .step-content {
   margin-top: 40px;
   min-height: 400px;
-}
-
-/* --- 数据上传步骤样式 --- */
-.format-info-card {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-  margin-bottom: 24px;
-}
-
-.format-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #495057;
-  font-weight: 600;
-}
-
-.format-requirements {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.requirement-item h4 {
-  margin: 0 0 8px 0;
-  color: #343a40;
-  font-size: 14px;
-}
-
-.requirement-item p {
-  margin: 0;
-  color: #6c757d;
-  font-size: 13px;
-}
-
-.data-structure-section {
-  display: flex;
-  gap: 20px;
-  align-items: flex-start;
-}
-
-.table-structure {
-  flex-shrink: 0;
-}
-
-.example-table {
-  flex: 1;
-}
-
-.example-table h5 {
-  margin: 0 0 12px 0;
-  color: #343a40;
-  font-size: 13px;
-  font-weight: 600;
-}
-
-.number-value {
-  font-family: 'Courier New', monospace;
-  font-size: 11px;
-  color: #e6a23c;
-  font-weight: 500;
-}
-
-.requirements-list {
-  margin: 0;
-  padding-left: 20px;
-  color: #6c757d;
-  font-size: 13px;
-}
-
-.requirements-list li {
-  margin-bottom: 4px;
-  line-height: 1.4;
-}
-
-.upload-section {
-  margin-bottom: 24px;
-}
-
-.upload-dragger {
-  padding: 32px;
-  text-align: center;
-  border: 2px dashed #dcdfe6;
-  border-radius: 8px;
-  transition: border-color 0.3s, background-color 0.3s;
-  background-color: #fff;
-}
-
-.upload-dragger:hover {
-  border-color: #409eff;
-  background-color: #f5faff;
-}
-
-.upload-icon {
-  font-size: 48px;
-  color: #c0c4cc;
-  margin-bottom: 16px;
-}
-
-.upload-text p {
-  margin: 8px 0;
-  color: #606266;
-  font-size: 14px;
-}
-
-.upload-text em {
-  color: #409eff;
-  font-style: normal;
-}
-
-.upload-tip {
-  font-size: 12px;
-  color: #909399;
-}
-
-.upload-format {
-  font-size: 12px;
-  color: #409eff;
-  font-family: 'Courier New', monospace;
-  background: #ecf5ff;
-  padding: 4px 8px;
-  border-radius: 4px;
-  display: inline-block;
-  margin-top: 8px;
-}
-
-.file-info-section {
-  margin-top: 24px;
-}
-
-.file-info-card {
-  background: #f8f9fa;
-  border: 1px solid #e9ecef;
-}
-
-.file-info-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.file-info-icon {
-  font-size: 32px;
-  color: #409eff;
-}
-
-.file-valid .file-info-icon { color: #67c23a; }
-.file-invalid .file-info-icon { color: #f56c6c; }
-.file-validating .file-info-icon { color: #e6a23c; }
-
-.file-info-details {
-  flex: 1;
-}
-
-.file-info-name {
-  font-weight: 500;
-  color: #303133;
-  font-size: 16px;
-  margin-bottom: 4px;
-}
-
-.file-info-meta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 12px;
-  color: #909399;
-}
-
-.validation-details {
-  margin-top: 12px;
-  padding: 12px;
-  border-radius: 6px;
-  border-top: 1px solid #ebeef5;
-}
-
-.file-invalid .validation-details {
-  background-color: #fef0f0;
-}
-
-.file-valid .validation-details {
-  background-color: #f0f9eb;
-}
-
-.error-message {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: #f56c6c;
-  font-size: 13px;
-}
-
-.preview-data {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.preview-title {
-  font-size: 12px;
-  color: #606266;
-  font-weight: 500;
-}
-
-.data-preview {
-  font-family: 'Courier New', monospace;
-  font-size: 11px;
-  color: #303133;
-  background: #fff;
-  padding: 8px;
-  border: 1px solid #e4e7ed;
-  border-radius: 4px;
-  line-height: 1.3;
-  max-height: 120px;
-  overflow-y: auto;
 }
 
 /* --- 数据选择样式 --- */
