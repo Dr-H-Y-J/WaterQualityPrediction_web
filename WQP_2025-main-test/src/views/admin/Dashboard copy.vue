@@ -142,8 +142,19 @@ const waterParams = ref({
   conductivity: 252.5
 })
 
-// 数据来自数据库
-const historyData = ref([])
+// 模拟历史数据（从true_result.csv中提取的部分数据）
+const historyData = ref([
+  { time: '2020/1/5 4:00', temperature: 12.8, ph: 7.71, cod: 11.52, turbidity: 6.2, conductivity: 252.5 },
+  { time: '2020/1/5 5:00', temperature: 12.7, ph: 7.71, cod: 12.63, turbidity: 8.7, conductivity: 252.8 },
+  { time: '2020/1/5 6:00', temperature: 13.1, ph: 7.7, cod: 12.41, turbidity: 8.7, conductivity: 252.2 },
+  { time: '2020/1/5 7:00', temperature: 13.1, ph: 7.71, cod: 12.68, turbidity: 8.7, conductivity: 252.2 },
+  { time: '2020/1/5 8:00', temperature: 12.9, ph: 7.7, cod: 11.39, turbidity: 6.1, conductivity: 252.5 },
+  { time: '2020/1/5 9:00', temperature: 12.8, ph: 7.71, cod: 12.2, turbidity: 8.1, conductivity: 252.8 },
+  { time: '2020/1/5 10:00', temperature: 13.2, ph: 7.71, cod: 12.35, turbidity: 7.9, conductivity: 252.3 },
+  { time: '2020/1/5 11:00', temperature: 13.3, ph: 7.7, cod: 12.17, turbidity: 9.1, conductivity: 252.3 },
+  { time: '2020/1/5 12:00', temperature: 13, ph: 7.69, cod: 11.05, turbidity: 6, conductivity: 252.4 },
+  { time: '2020/1/5 13:00', temperature: 13.1, ph: 7.69, cod: 11.82, turbidity: 6.5, conductivity: 252.5 }
+])
 
 // 生成传感器列表 A0-Z0 + A1, B1
 const generateSensorList = () => {
@@ -253,85 +264,9 @@ const updateTime = () => {
   currentTime.value = now.toLocaleString('zh-CN')
 }
 
-// 从后端获取水质数据
-const fetchWaterQualityData = async () => {
-  try {
-    // 获取数据集列表
-    const response = await fetch('/api/water-quality/datasets')
-    const datasetsResult = await response.json()
-    
-    // 检查响应是否成功
-    if (!datasetsResult.success) {
-      console.error('获取数据集失败:', datasetsResult.error)
-      return
-    }
-    
-    const datasets = datasetsResult.datasets
-    
-    if (datasets && datasets.length > 0) {
-      // 获取第一个数据集的数据
-      const tableName = datasets[0].table_name
-      
-      // 修改这里：使用正确的API路径 /api/water-quality/datasets/:table_name
-      const dataResponse = await fetch(`/api/water-quality/datasets/${tableName}?limit=10`)
-      const dataResult = await dataResponse.json()
-      
-      // 检查数据响应是否成功
-      if (!dataResult.success) {
-        console.error('获取数据失败:', dataResult.error)
-        return
-      }
-      
-      const data = dataResult.rows || dataResult.data || []
-      
-      // 确保数据存在且为数组
-      if (!Array.isArray(data) || data.length === 0) {
-        console.warn('未获取到有效数据')
-        return
-      }
-      
-      // 转换数据格式以适应图表
-      historyData.value = data.map(row => ({
-        time: row.date || row.created_at || new Date().toLocaleString(),
-        temperature: row.temperature !== undefined ? row.temperature : 0,
-        ph: row.pH !== undefined ? row.pH : (row.ph !== undefined ? row.ph : 0),
-        cod: row.O2 !== undefined ? row.O2 : (row.cod !== undefined ? row.cod : 0),
-        turbidity: row.NTU !== undefined ? row.NTU : (row.turbidity !== undefined ? row.turbidity : 0),
-        conductivity: row.uS !== undefined ? row.uS : (row.conductivity !== undefined ? row.conductivity : 0)
-      }))
-      
-      // 更新当前水质参数为最新数据
-      if (historyData.value.length > 0) {
-        const latest = historyData.value[0]
-        waterParams.value = {
-          time: latest.time,
-          temperature: latest.temperature,
-          ph: latest.ph,
-          cod: latest.cod,
-          turbidity: latest.turbidity,
-          conductivity: latest.conductivity
-        }
-      }
-      
-      // 重新初始化图表
-      nextTick(() => {
-        initLineChart()
-        initBarChart()
-      })
-    } else {
-      console.warn('未找到数据集')
-    }
-  } catch (error) {
-    console.error('获取水质数据失败:', error)
-  }
-}
 // 初始化折线图
 const initLineChart = () => {
   if (!lineChart.value) return
-  
-  if (lineChartInstance) {
-    lineChartInstance.dispose()
-  }
   
   lineChartInstance = echarts.init(lineChart.value)
   
@@ -427,10 +362,6 @@ const initLineChart = () => {
 const initBarChart = () => {
   if (!barChart.value) return
   
-  if (barChartInstance) {
-    barChartInstance.dispose()
-  }
-  
   barChartInstance = echarts.init(barChart.value)
   
   const option = {
@@ -488,17 +419,10 @@ const initBarChart = () => {
 
 // 定时器
 let timer = null
-let dataTimer = null
 
 onMounted(() => {
   updateTime()
   timer = setInterval(updateTime, 1000)
-  
-  // 获取数据库数据
-  fetchWaterQualityData()
-  
-  // 每分钟更新一次数据
-  dataTimer = setInterval(fetchWaterQualityData, 60000)
   
   // 在DOM更新后初始化图表
   nextTick(() => {
@@ -509,7 +433,6 @@ onMounted(() => {
 
 onUnmounted(() => {
   if (timer) clearInterval(timer)
-  if (dataTimer) clearInterval(dataTimer)
   if (lineChartInstance) lineChartInstance.dispose()
   if (barChartInstance) barChartInstance.dispose()
 })
@@ -522,7 +445,6 @@ window.addEventListener('resize', () => {
 </script>
 
 <style scoped>
-/* 样式保持不变 */
 .system-analysis {
   background: linear-gradient(135deg, #e0f7fa 0%, #f5f7fa 100%);
   min-height: 100vh;

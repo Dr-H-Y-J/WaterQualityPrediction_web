@@ -72,21 +72,18 @@
                 </el-select>
               </el-form-item>
 
-              <el-form-item v-if="detectionConfig.model" label="选择权重文件:" prop="weights">
-                <el-select
-                  v-model="detectionConfig.weights"
-                  placeholder="请选择权重文件"
-                  style="width: 100%"
-                  :loading="weightsLoading"
-                >
-                  <el-option
-                    v-for="weight in availableWeights"
-                    :key="weight.value"
-                    :label="weight.label"
-                    :value="weight.value"
-                  />
-                </el-select>
-              </el-form-item>
+              <el-form-item label="选择权重文件:" prop="weights">
+              <el-select
+                v-model="detectionConfig.weights"
+                placeholder="请选择权重文件"
+                style="width: 100%"
+              >
+                <el-option
+                  label="informer_mtest_0"
+                  value="informer_mtest_0"
+                />
+              </el-select>
+            </el-form-item>
             </el-form>
 
             <!-- Step 3: Water Quality Prediction -->
@@ -365,22 +362,10 @@ const requiredColumns = [
 const mockWeights = {
   'R-Informer': [
     {
-      label: '水质预测 R-Informer v1.0',
-      value: 'r_informer_v1_0',
-      accuracy: '97.2%',
-      trainDate: '2024-09-15',
-    },
-    { 
-      label: '水质预测 R-Informer best_model', 
-      value: 'r_informer_best', 
-      accuracy: '98.1%', 
-      trainDate: '2024-09-20' 
-    },
-    {
-      label: '水质预测 R-Informer checkpoint_200',
-      value: 'r_informer_cp200',
-      accuracy: '96.8%',
-      trainDate: '2024-09-10',
+      label: 'informer_mtest_0',
+      value: 'informer_mtest_0',
+      accuracy: '98.1%',
+      trainDate: '2024-09-20'
     },
   ],
 }
@@ -558,17 +543,42 @@ const handleCurrentChange = (val) => {
 }
 
 // 判断水质状态
+// 判断水质状态
 const determineWaterQuality = (data) => {
-  // 根据溶解氧含量判断水质状态
-  if (data.O2 !== undefined) {
-    const o2 = parseFloat(data.O2);
-    if (o2 >= 5) return '正常';
-    if (o2 >= 2) return '警告';
+  try {
+    // 获取各个参数值
+    const o2 = parseFloat(data.O2) || 0;
+    const ph = parseFloat(data.pH) || 7;
+    const temp = parseFloat(data.temperature) || 20;
+    const ntu = parseFloat(data.NTU) || 0;
+    const us = parseFloat(data.uS) || 0;
+    
+    // 综合水质评价标准
+    // 正常条件
+    if (o2 >= 5 && o2 <= 15 && 
+        ph >= 6.5 && ph <= 8.5 && 
+        temp >= 0 && temp <= 35 &&
+        ntu <= 10 && 
+        us >= 50 && us <= 1000) {
+      return '正常';
+    }
+    
+    // 警告条件
+    if ((o2 >= 3 && o2 < 5) || (o2 > 15 && o2 <= 20) ||
+        (ph >= 6 && ph < 6.5) || (ph > 8.5 && ph <= 9) ||
+        (temp < 0 && temp >= -2) || (temp > 35 && temp <= 40) ||
+        (ntu > 10 && ntu <= 30) ||
+        (us >= 20 && us < 50) || (us > 1000 && us <= 2000)) {
+      return '警告';
+    }
+    
+    // 危险条件
     return '危险';
+  } catch (error) {
+    console.error('水质状态判断出错:', error);
+    return '未知';
   }
-  return '未知';
-}
-
+};
 // 开始水质预测
 const startDetection = async () => {
   try {
@@ -583,12 +593,47 @@ const startDetection = async () => {
       return
     }
 
-    // 调用后端预测接口
-    const response = await axios.post(`${API_BASE_URL}/water-quality/predict`, {
-      table_name: tableName,
+    // 先获取数据
+    const dataResponse = await axios.get(`${API_BASE_URL}/water-quality/datasets/${tableName}/preview`, {
+      params: { limit: 100 } // 获取足够的数据进行预测
+    });
+
+    // 提取数据并转换为数组格式
+    let inputData = [];
+    if (dataResponse.data && Array.isArray(dataResponse.data.rows)) {
+      // 将数据转换为数值数组，确保数据是数值类型，并且只取数值列
+      inputData = dataResponse.data.rows.map(row => [
+        parseFloat(row.temperature) || 0,
+        parseFloat(row.pH) || 0,
+        parseFloat(row.O2) || 0,
+        parseFloat(row.NTU) || 0,
+        parseFloat(row.uS) || 0
+      ]);
+    }
+
+    // 检查是否有足够的数据
+    if (inputData.length === 0) {
+      ElMessage.error('没有获取到有效数据')
+      detecting.value = false
+      return
+    }
+
+    // 确保数据是二维数组格式
+    if (inputData.length > 0 && !Array.isArray(inputData[0])) {
+      ElMessage.error('数据格式不正确')
+      detecting.value = false
+      return
+    }
+
+    console.log('发送到模型的数据:', inputData);
+
+    // 调用模型服务的预测接口，通过代理
+    const response = await axios.post('/model-api/api/water-quality/predict', {
+      input_data: inputData,
       prediction_hours: detectionOptions.predictionHours,
       model_type: detectionConfig.model,
-      data_name: selectedExistingData.value[0]?.name || 'QianTangRiver2020-2024WorkedFull'
+      data_name: selectedExistingData.value[0]?.name || 'QianTangRiver2020-2024WorkedFull',
+      weights: detectionConfig.weights
     })
 
     if (response.data.success) {
@@ -610,12 +655,12 @@ const startDetection = async () => {
       throw new Error(response.data.error)
     }
   } catch (error) {
+    console.error('预测错误详情:', error);
     if (error.response?.data?.error === '模型服务不可用') {
       ElMessage.error('预测模型服务当前不可用，请稍后重试')
     } else {
       ElMessage.error('预测过程中出现错误: ' + (error.response?.data?.message || error.message))
     }
-    console.error(error)
   } finally {
     detecting.value = false
   }
