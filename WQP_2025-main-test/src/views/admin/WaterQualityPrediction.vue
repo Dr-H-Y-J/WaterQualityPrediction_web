@@ -66,9 +66,8 @@
                   placeholder="请选择一个模型"
                   style="width: 100%"
                   @change="onModelChange"
+                  :disabled="true"
                 >
-                  <el-option label="水质预测模型-LSTM" value="LSTM" />
-                  <el-option label="水质预测模型-RNN" value="RNN" />
                   <el-option label="水质预测模型-R-Informer" value="R-Informer" />
                 </el-select>
               </el-form-item>
@@ -88,7 +87,6 @@
                   />
                 </el-select>
               </el-form-item>
-
             </el-form>
 
             <!-- Step 3: Water Quality Prediction -->
@@ -115,17 +113,17 @@
                 <h3>预测选项</h3>
                 <el-form :model="detectionOptions" label-width="140px">
                   <el-form-item label="预测时长:">
-                  <el-input-number
-                    v-model="detectionOptions.predictionHours"
-                    :min="1"
-                    :max="168"
-                    controls-position="right"
-                    style="width: 200px"
-                  /> 小时 (1-168小时)
-                  <div class="threshold-info">
-                    <span class="threshold-desc">预测未来1小时到168小时(7天)的水质数据</span>
-                  </div>
-                </el-form-item>
+                    <el-input-number
+                      v-model="detectionOptions.predictionHours"
+                      :min="1"
+                      :max="168"
+                      controls-position="right"
+                      style="width: 200px"
+                    /> 小时 (1-168小时)
+                    <div class="threshold-info">
+                      <span class="threshold-desc">预测未来1小时到168小时(7天)的水质数据</span>
+                    </div>
+                  </el-form-item>
 
                   <el-form-item label="批处理大小:">
                     <el-input-number
@@ -141,17 +139,18 @@
                 <div class="results-preview" v-if="detectionResults">
                   <h4>预测结果预览（前5行）：</h4>
                   <el-table :data="detectionResults.previewData" size="small" border stripe>
-                    <el-table-column prop="date" label="日期" width="150" />
-                    <el-table-column prop="temperature" label="温度(℃)" width="100" />
-                    <el-table-column prop="pH" label="pH值" width="80" />
-                    <el-table-column prop="O2" label="溶解氧(mg/L)" width="120" />
-                    <el-table-column prop="NTU" label="浊度(NTU)" width="100" />
-                    <el-table-column prop="uS" label="电导率(μS/cm)" width="120" />
-                    <el-table-column prop="quality" label="水质状态" width="100">
-                      <template #default="{ row }">
+                    <!-- 动态生成表格列 -->
+                    <el-table-column 
+                      v-for="column in resultPreviewColumns" 
+                      :key="column.name"
+                      :prop="column.name" 
+                      :label="column.label" 
+                      :width="getColumnWidth(column.name)"
+                    >
+                      <template #default="{ row }" v-if="column.name === 'quality'">
                         <el-tag 
                           size="small" 
-                          :type="row.quality === '正常' ? 'success' : row.quality === '警告' ? 'warning' : 'danger'"
+                          :type="getQualityTagType(row.quality)"
                         >
                           {{ row.quality }}
                         </el-tag>
@@ -194,35 +193,33 @@
         </el-button>
       </div>
     </el-card>
-<!-- 数据预览对话框 -->
-     <!-- 修改数据预览对话框中的表格部分 -->
-<!-- 修改数据预览对话框中的表格部分 -->
-
- <el-dialog
-  v-model="previewDialogVisible"
-  title="数据预览"
-  width="80%"
-  top="5vh"
->
-  <el-table 
-    :data="previewDataList" 
-    height="400"
-    v-loading="previewLoading"
-  >
-    <!-- 动态生成列 -->
-    <el-table-column 
-      v-for="column in previewColumns"
-      :key="column.name"
-      :prop="column.name"
-      :label="column.label"
-    />
-  </el-table>
-  <template #footer>
-    <span class="dialog-footer">
-      <el-button @click="previewDialogVisible = false">关闭</el-button>
-    </span>
-  </template>
-</el-dialog>
+    
+    <!-- 数据预览对话框 -->
+    <el-dialog
+      v-model="previewDialogVisible"
+      title="数据预览"
+      width="80%"
+      top="5vh"
+    >
+      <el-table 
+        :data="previewDataList" 
+        height="400"
+        v-loading="previewLoading"
+      >
+        <!-- 动态生成列 -->
+        <el-table-column 
+          v-for="column in previewColumns"
+          :key="column.name"
+          :prop="column.name"
+          :label="column.label"
+        />
+      </el-table>
+      <template #footer>
+        <span class="dialog-footer">
+          <el-button @click="previewDialogVisible = false">关闭</el-button>
+        </span>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -254,7 +251,46 @@ const previewDialogVisible = ref(false)
 const previewDataItem = ref(null)
 const previewDataList = ref([])
 const previewLoading = ref(false)
-// 添加预览列定义
+
+// 获取列标签
+const getColumnLabel = (key) => {
+  const columnMap = {
+    'date': '日期',
+    'temperature': '温度(℃)',
+    'pH': 'pH值',
+    'O2': '溶解氧(mg/L)',
+    'NTU': '浊度(NTU)',
+    'uS': '电导率(μS/cm)',
+    'quality': '水质状态'
+  }
+  return columnMap[key] || key
+}
+
+// 获取列宽度
+const getColumnWidth = (columnName) => {
+  const widthMap = {
+    'date': 180,
+    'temperature': 100,
+    'pH': 80,
+    'O2': 120,
+    'NTU': 100,
+    'uS': 120,
+    'quality': 100
+  }
+  return widthMap[columnName] || 100
+}
+
+// 获取水质状态标签类型
+const getQualityTagType = (quality) => {
+  switch (quality) {
+    case '正常': return 'success'
+    case '警告': return 'warning'
+    case '危险': return 'danger'
+    default: return ''
+  }
+}
+
+// 预览列定义
 const previewColumns = computed(() => {
   if (previewDataList.value.length > 0) {
     return Object.keys(previewDataList.value[0]).map(key => ({
@@ -265,18 +301,18 @@ const previewColumns = computed(() => {
   return []
 })
 
-// 获取列标签
-const getColumnLabel = (key) => {
-  const columnMap = {
-    'date': '日期',
-    'temperature': '温度(℃)',
-    'pH': 'pH值',
-    'O2': '溶解氧(mg/L)',
-    'NTU': '浊度(NTU)',
-    'uS': '电导率(μS/cm)'
+// 结果预览列定义
+const resultPreviewColumns = computed(() => {
+  if (detectionResults.value && detectionResults.value.previewData.length > 0) {
+    const firstRow = detectionResults.value.previewData[0]
+    return Object.keys(firstRow).map(key => ({
+      name: key,
+      label: getColumnLabel(key)
+    }))
   }
-  return columnMap[key] || key
-}
+  return []
+})
+
 // 日期格式化函数
 const formatDateTime = (dateString) => {
   if (!dateString) return '未知时间';
@@ -300,6 +336,7 @@ const formatDateTime = (dateString) => {
     return '格式错误';
   }
 };
+
 // 检测配置
 const detectionConfig = reactive({
   model: '',
@@ -325,39 +362,7 @@ const requiredColumns = [
   { name: 'uS', label: '电导率(μS/cm)', type: 'number' }
 ]
 
-
-
-// Mock data for available weights
 const mockWeights = {
-  LSTM: [
-    {
-      label: '水质预测 lstm_v1.0',
-      value: 'lstm_v1_0',
-      accuracy: '95.2%',
-      trainDate: '2024-08-10',
-    },
-    { label: '水质预测 lstm_best_model', value: 'lstm_best', accuracy: '96.8%', trainDate: '2024-08-12' },
-    {
-      label: '水质预测 lstm_checkpoint_100',
-      value: 'lstm_cp100',
-      accuracy: '94.5%',
-      trainDate: '2024-08-08',
-    },
-  ],
-  RNN: [
-    {
-      label: '水质预测 rnn_v2.1',
-      value: 'rnn_v2_1',
-      accuracy: '93.1%',
-      trainDate: '2024-08-14',
-    },
-    {
-      label: '水质预测 rnn_stable',
-      value: 'rnn_stable',
-      accuracy: '92.3%',
-      trainDate: '2024-08-11',
-    },
-  ],
   'R-Informer': [
     {
       label: '水质预测 R-Informer v1.0',
@@ -365,7 +370,12 @@ const mockWeights = {
       accuracy: '97.2%',
       trainDate: '2024-09-15',
     },
-    { label: '水质预测 R-Informer best_model', value: 'r_informer_best', accuracy: '98.1%', trainDate: '2024-09-20' },
+    { 
+      label: '水质预测 R-Informer best_model', 
+      value: 'r_informer_best', 
+      accuracy: '98.1%', 
+      trainDate: '2024-09-20' 
+    },
     {
       label: '水质预测 R-Informer checkpoint_200',
       value: 'r_informer_cp200',
@@ -424,6 +434,10 @@ const onModelChange = () => {
   // Simulate loading weights
   setTimeout(() => {
     weightsLoading.value = false
+    // 默认选择第一个权重
+    if (availableWeights.value.length > 0) {
+      detectionConfig.weights = availableWeights.value[0].value
+    }
   }, 500)
 }
 
@@ -484,7 +498,6 @@ const fetchDatasets = async () => {
   }
 }
 
-
 // 预览数据
 const previewData = async (dataItem) => {
   previewDialogVisible.value = true
@@ -544,6 +557,18 @@ const handleCurrentChange = (val) => {
   // 这里应该重新获取数据
 }
 
+// 判断水质状态
+const determineWaterQuality = (data) => {
+  // 根据溶解氧含量判断水质状态
+  if (data.O2 !== undefined) {
+    const o2 = parseFloat(data.O2);
+    if (o2 >= 5) return '正常';
+    if (o2 >= 2) return '警告';
+    return '危险';
+  }
+  return '未知';
+}
+
 // 开始水质预测
 const startDetection = async () => {
   try {
@@ -563,16 +588,21 @@ const startDetection = async () => {
       table_name: tableName,
       prediction_hours: detectionOptions.predictionHours,
       model_type: detectionConfig.model,
-      weights: detectionConfig.weights
+      data_name: selectedExistingData.value[0]?.name || 'QianTangRiver2020-2024WorkedFull'
     })
 
     if (response.data.success) {
-      // 处理预测结果
+      // 处理预测结果，添加水质状态判断
+      const predictionsWithQuality = response.data.predictions.map(pred => ({
+        ...pred,
+        quality: determineWaterQuality(pred)
+      }))
+      
       detectionResults.value = {
-        totalSamples: response.data.predictions.length,
-        predictions: response.data.predictions,
+        totalSamples: predictionsWithQuality.length,
+        predictions: predictionsWithQuality,
         processingTime: Date.now(),
-        previewData: response.data.predictions.slice(0, 5) // 只显示前5行预览
+        previewData: predictionsWithQuality.slice(0, 5) // 只显示前5行预览
       }
       
       ElMessage.success('预测完成！')
@@ -595,12 +625,22 @@ const startDetection = async () => {
 const downloadResults = () => {
   if (!detectionResults.value) return
 
-  // 生成CSV内容
-  const headers = [...requiredColumns.map(col => col.name), 'quality']
+  // 动态获取列名
+  const allData = detectionResults.value.predictions
+  if (allData.length === 0) return
+  
+  const headers = Object.keys(allData[0])
   const csvContent = [
-    headers.join(','),
-    ...detectionResults.value.previewData.map(row => 
-      headers.map(header => row[header]).join(',')
+    headers.map(h => `"${getColumnLabel(h)}"`).join(','),
+    ...allData.map(row => 
+      headers.map(header => {
+        const value = row[header]
+        // 对日期进行特殊处理
+        if (header === 'date') {
+          return `"${value}"`
+        }
+        return value
+      }).join(',')
     )
   ].join('\n')
 
@@ -629,6 +669,14 @@ const resetDetection = () => {
 // 组件挂载时获取数据集列表
 onMounted(() => {
   fetchDatasets()
+  // 设置默认模型
+  detectionConfig.model = 'R-Informer'
+  // 设置默认权重
+  setTimeout(() => {
+    if (availableWeights.value.length > 0) {
+      detectionConfig.weights = availableWeights.value[0].value
+    }
+  }, 100)
 })
 </script>
 
