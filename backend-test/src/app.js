@@ -31,7 +31,7 @@ const PORT = process.env.PORT || 3000;
 app.use(helmet()); // 安全头部
 // 配置 CORS 允许前端访问
 app.use(cors({
-  origin: 'http://localhost:5173', // 前端开发服务器地址
+  origin: 'http://localhost:8080', // 前端开发服务器地址
   credentials: true
 }));
 app.use(morgan('combined')); // 日志记录
