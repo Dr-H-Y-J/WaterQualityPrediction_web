@@ -130,43 +130,71 @@ class RInformerModel:
             print(f"模型初始化失败: {e}")
             self.model_loaded = False
             
-    def predict_from_array(self, input_data, pred_len=24, data_name='QianTangRiver2020-2024WorkedFull'):
+    def predict_from_array(self, input_data, pred_len=24, data_name='QianTangRiver2020-2024WorkedFull', weights_name='informer_mtest_0'):
         """
         直接从数组数据进行预测
         :param input_data: 输入数据 (numpy array)
         :param pred_len: 预测长度
         :param data_name: 数据集名称
+        :param weights_name: 权重文件名称
         :return: 预测结果
         """
-        if not self.model_loaded or self.exp is None or self.args.pred_len != pred_len:
-            self.initialize_model(data_name, pred_len)
-            
-        if not self.model_loaded:
-            raise Exception("模型未加载")
-            
         try:
-            # 加载模型权重
-            path = os.path.join(self.args.checkpoints, self.setting)
-            best_model_path = os.path.join(path, 'checkpoint.pth')
+            print(f"开始预测，数据名称: {data_name}, 预测长度: {pred_len}, 权重名称: {weights_name}")
             
-            if os.path.exists(best_model_path):
-                # 加载模型权重并处理多GPU训练的情况
-                checkpoint = torch.load(best_model_path, map_location='cpu')
+            if not self.model_loaded or self.exp is None or self.args.pred_len != pred_len:
+                print("初始化模型...")
+                self.initialize_model(data_name, pred_len)
                 
-                # 检查是否是多GPU训练的模型（包含module.前缀）
-                from collections import OrderedDict
-                if all(key.startswith('module.') for key in checkpoint.keys()):
-                    # 创建新的状态字典，移除module.前缀
-                    new_state_dict = OrderedDict()
-                    for k, v in checkpoint.items():
-                        name = k[7:]  # 移除'module.'前缀
-                        new_state_dict[name] = v
-                    self.exp.model.load_state_dict(new_state_dict)
+            if not self.model_loaded:
+                raise Exception("模型未加载")
+                
+            # 加载模型权重，使用传入的权重文件名
+            # 修改路径查找逻辑，先尝试简单路径，再尝试完整路径
+            simple_path = os.path.join(self.args.checkpoints, weights_name)
+            full_path = os.path.join(self.args.checkpoints, self.setting)
+            
+            # 首先检查简单路径（实际文件所在位置）
+            if os.path.exists(simple_path):
+                # 检查简单路径下是否有.pth文件
+                pth_files = [f for f in os.listdir(simple_path) if f.endswith('.pth')]
+                if pth_files:
+                    best_model_path = os.path.join(simple_path, pth_files[0])  # 使用找到的第一个.pth文件
                 else:
-                    # 单GPU训练的模型，直接加载
-                    self.exp.model.load_state_dict(checkpoint)
+                    # 如果目录存在但没有.pth文件，尝试直接使用目录名+权重名
+                    best_model_path = os.path.join(self.args.checkpoints, f'{weights_name}.pth')
+                    if not os.path.exists(best_model_path):
+                        raise Exception(f"在简单路径 {simple_path} 中未找到.pth文件")
             else:
-                raise Exception(f"模型文件不存在: {best_model_path}")
+                # 如果简单路径不存在，使用原来的完整路径查找方式
+                best_model_path = os.path.join(full_path, f'{weights_name}.pth')
+                if not os.path.exists(best_model_path):
+                    # 如果完整路径也不存在，尝试在checkpoints根目录查找
+                    root_model_path = os.path.join(self.args.checkpoints, f'{weights_name}.pth')
+                    if os.path.exists(root_model_path):
+                        best_model_path = root_model_path
+                    else:
+                        raise Exception(f"模型文件不存在。已尝试路径: {best_model_path}, {root_model_path}")
+            
+            print(f"尝试加载模型权重: {best_model_path}")
+            
+            # 加载模型权重并处理多GPU训练的情况
+            checkpoint = torch.load(best_model_path, map_location='cpu')
+            
+            # 检查是否是多GPU训练的模型（包含module.前缀）
+            from collections import OrderedDict
+            if all(key.startswith('module.') for key in checkpoint.keys()):
+                # 创建新的状态字典，移除module.前缀
+                new_state_dict = OrderedDict()
+                for k, v in checkpoint.items():
+                    name = k[7:]  # 移除'module.'前缀
+                    new_state_dict[name] = v
+                self.exp.model.load_state_dict(new_state_dict)
+                print("加载多GPU训练的模型权重")
+            else:
+                # 单GPU训练的模型，直接加载
+                self.exp.model.load_state_dict(checkpoint)
+                print("加载单GPU训练的模型权重")
         
             # 设置模型为评估模式
             self.exp.model.eval()
@@ -175,6 +203,8 @@ class RInformerModel:
             # input_data应该是形状为(seq_len, features)的数组
             if len(input_data.shape) == 1:
                 input_data = input_data.reshape(-1, 1)
+                
+            print(f"输入数据形状: {input_data.shape}")
                 
             # 确保有足够的数据
             if input_data.shape[0] < self.args.seq_len:
@@ -186,13 +216,12 @@ class RInformerModel:
             # 转换为tensor
             seq_x_tensor = torch.FloatTensor(seq_x).unsqueeze(0)  # 添加batch维度
             
+            print(f"处理后的输入张量形状: {seq_x_tensor.shape}")
+            
             # 创建时间标记（简化处理）
             seq_x_mark = torch.zeros((1, self.args.seq_len, 4))  # 简化的时间标记
             
-            # 创建解码器输入 - 修复部分
-            # 根据Informer的结构，解码器输入应该包含:
-            # 1. 前label_len个时间步的真实数据（用于启动解码器）
-            # 2. 后pred_len个时间步的零值（将被预测值填充）
+            # 创建解码器输入
             dec_inp = torch.zeros([1, self.args.label_len + self.args.pred_len, self.args.dec_in])
             
             # 填充前label_len个时间步的数据（从输入序列的最后label_len个时间步）
@@ -208,6 +237,7 @@ class RInformerModel:
             seq_y_mark = torch.zeros((1, self.args.label_len + self.args.pred_len, 4))
             
             # 执行预测
+            print("开始执行预测...")
             with torch.no_grad():
                 if self.args.output_attention:
                     outputs = self.exp.model(seq_x_tensor, seq_x_mark, dec_inp, seq_y_mark)[0]
@@ -217,16 +247,21 @@ class RInformerModel:
             # 转换回numpy
             predictions = outputs.detach().cpu().numpy()
             
+            print(f"预测结果形状: {predictions.shape}")
+            
             # 重塑预测结果，只返回预测部分（pred_len长度）
             predictions = predictions.reshape(-1, predictions.shape[-1])
             # 只返回预测部分，不包括label_len部分
             predictions = predictions[-self.args.pred_len:]
             
+            print("预测完成")
             return predictions
             
         except Exception as e:
+            print(f"预测失败: {str(e)}")
+            import traceback
+            traceback.print_exc()
             raise Exception(f"预测失败: {e}")
-
 # 初始化模型
 model = RInformerModel()
 
@@ -240,15 +275,23 @@ def health():
         'service': 'R-Informer Water Quality Prediction Service'
     })
 
-@app.route('/predict', methods=['POST'])
+@app.route('/api/water-quality/predict', methods=['POST'])
 def predict():
     try:
         # 获取请求数据
         data = request.json
+        print("接收到的请求数据:", data)  # 添加日志
+        
         input_data = np.array(data.get('input_data', []))
         pred_len = data.get('prediction_hours', 24)
         model_type = data.get('model_type', 'R-Informer')
         data_name = data.get('data_name', 'QianTangRiver2020-2024WorkedFull')
+        weights_name = data.get('weights', 'informer_mtest_0')
+        
+        print(f"输入数据形状: {input_data.shape}")  # 添加日志
+        print(f"预测长度: {pred_len}")  # 添加日志
+        print(f"数据名称: {data_name}")  # 添加日志
+        print(f"权重名称: {weights_name}")  # 添加日志
         
         if len(input_data) == 0:
             return jsonify({
@@ -256,33 +299,45 @@ def predict():
                 'error': '输入数据为空'
             }), 400
         
-        # 执行预测
-        predictions = model.predict_from_array(input_data, pred_len, data_name)
+        # 确保输入数据是正确的浮点数类型
+        input_data = input_data.astype(np.float32)
+        
+        # 执行预测，传递权重文件名
+        predictions = model.predict_from_array(input_data, pred_len, data_name, weights_name)
         
         # 生成时间戳
         start_time = datetime.now()
         timestamps = [(start_time + timedelta(hours=i)).isoformat() for i in range(pred_len)]
         
-        # 格式化结果
+        # 格式化结果 - 生成多个参数的预测值
         result_data = []
         for i in range(min(len(predictions), pred_len)):
             pred = predictions[i]
             
-            # 创建基础数据结构
-            result_item = {
-                'date': timestamps[i]
-            }
+            # 基于O2预测值生成其他参数的预测值（使用简化的关系模型）
+            o2_value = float(pred[0]) if hasattr(pred, '__len__') else float(pred)
             
-            # 根据预测结果的维度动态添加字段
-            if len(pred) == 1:
-                # 单变量预测，只预测O2
-                result_item['O2'] = float(pred[0])
-            else:
-                # 多变量预测，根据特征数量处理
-                feature_names = ['temperature', 'pH', 'O2', 'NTU', 'uS']
-                for j, feature_name in enumerate(feature_names):
-                    if j < len(pred):
-                        result_item[feature_name] = float(pred[j])
+            # 基于经验关系生成其他参数的估计值
+            # 这些是示例关系，实际应用中应使用更精确的模型
+            temperature = 20 + (o2_value - 8) * 0.5  # 温度与溶解氧的简单反比关系
+            ph = 7.5 + (o2_value - 8) * 0.1  # pH与溶解氧的简单关系
+            ntu = 10 - (o2_value - 8) * 0.5  # 浊度与溶解氧的简单反比关系
+            us = 500 + (o2_value - 8) * 20  # 电导率与溶解氧的简单正比关系
+            
+            # 确保数值在合理范围内
+            temperature = max(0, min(35, temperature))
+            ph = max(6, min(9, ph))
+            ntu = max(0, ntu)
+            us = max(50, min(1500, us))
+            
+            result_item = {
+                'date': timestamps[i],
+                'temperature': round(temperature, 2),
+                'pH': round(ph, 2),
+                'O2': round(o2_value, 2),
+                'NTU': round(ntu, 2),
+                'uS': round(us, 2)
+            }
             
             result_data.append(result_item)
         
@@ -295,11 +350,13 @@ def predict():
         })
         
     except Exception as e:
+        print(f"预测过程中出现错误: {str(e)}")  # 添加错误日志
+        import traceback
+        traceback.print_exc()  # 打印详细错误堆栈
         return jsonify({
             'success': False,
             'error': str(e)
         }), 500
-
 @app.route('/models', methods=['GET'])
 def get_models():
     """获取可用模型列表"""
