@@ -1,44 +1,93 @@
-<!-- src/views/admin/Dashboard.vue -->
 <template>
   <div class="system-analysis">
     <!-- 头部标题 -->
     <div class="header">
-      <h1>水质预测数据大屏</h1>
+      <h1>钱塘江水质监测平台</h1>
       <div class="time">{{ currentTime }}</div>
     </div>
 
     <!-- 主要内容区域 -->
     <div class="main-content">
-      <!-- 水质实时监测 -->
-      <div class="water-quality-section">
-        <h3>水质实时监测</h3>
-        <div class="water-grid">
-          <div
-            v-for="sensor in waterSensors"
-            :key="sensor.id"
-            :class="['sensor-item', sensor.status]"
-            @click="showSensorDetail(sensor)"
-          >
-            <div class="sensor-id">{{ sensor.id }}</div>
-            <div class="sensor-params">
-              <div>PH: {{ sensor.ph }}</div>
-              <div>DO: {{ sensor.do }}mg/L</div>
-              <div>浊度: {{ sensor.turbidity }}NTU</div>
-            </div>
-            <div class="sensor-status-indicator">{{ sensor.statusText }}</div>
+      <!-- 监测站点数据表格和图表 -->
+      <div class="data-section">
+        <div class="data-table-section">
+          <h3>实时监测数据</h3>
+          <div class="table-container">
+            <el-table :data="waterSensors" style="width: 100%" max-height="400">
+              <el-table-column prop="id" label="监测站点" width="120"></el-table-column>
+              <el-table-column prop="ph" label="PH值" width="100"></el-table-column>
+              <el-table-column prop="do" label="溶解氧(mg/L)" width="120"></el-table-column>
+              <el-table-column prop="turbidity" label="浊度(NTU)" width="120"></el-table-column>
+              <el-table-column prop="cod" label="COD(mg/L)" width="120"></el-table-column>
+              <el-table-column prop="temperature" label="水温(℃)" width="100"></el-table-column>
+              <el-table-column label="状态" width="120">
+                <template #default="scope">
+                  <el-tag :type="getStatusType(scope.row.status)">{{ scope.row.statusText }}</el-tag>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
+        </div>
+
+        <!-- 站点水质对比图表 -->
+        <div class="chart-container station-chart">
+          <h3>各站点水质参数对比</h3>
+          <div class="station-chart-controls">
+            <el-select 
+              v-model="selectedStations" 
+              multiple
+              placeholder="选择站点进行对比" 
+              style="width: 100%;"
+            >
+              <el-option
+                v-for="station in waterSensors"
+                :key="station.id"
+                :label="station.id"
+                :value="station.id"
+              />
+            </el-select>
+          </div>
+          <div ref="stationChart" class="chart"></div>
         </div>
       </div>
 
       <!-- 图表区域 -->
       <div class="chart-section">
-        <div class="chart-container">
-          <h3>水质参数趋势图</h3>
-          <div ref="lineChart" class="chart"></div>
+        <!-- 水质参数趋势图 -->
+        <div class="chart-container trend-chart-container">
+          <h3>水质参数趋势分析</h3>
+          <div class="trend-chart-wrapper">
+            <div ref="trendChart" class="chart"></div>
+            <div class="trend-chart-controls">
+              <el-button 
+                :type="trendParams.ph ? 'primary' : 'default'" 
+                @click="toggleTrendParam('ph')"
+                size="small"
+              >
+                PH值
+              </el-button>
+              <el-button 
+                :type="trendParams.cod ? 'primary' : 'default'" 
+                @click="toggleTrendParam('cod')"
+                size="small"
+              >
+                COD
+              </el-button>
+              <el-button 
+                :type="trendParams.turbidity ? 'primary' : 'default'" 
+                @click="toggleTrendParam('turbidity')"
+                size="small"
+              >
+                浊度
+              </el-button>
+            </div>
+          </div>
         </div>
+        
+        <!-- 桑基图 -->
         <div class="chart-container">
-          <h3>当前水质参数对比</h3>
-          <div ref="barChart" class="chart"></div>
+          <h3>水质数据流向分析</h3>
+          <div ref="sankeyChart" class="chart"></div>
         </div>
       </div>
 
@@ -46,7 +95,7 @@
       <div class="bottom-panels">
         <!-- 水质参数监控 -->
         <div class="water-monitor">
-          <h3>水质参数实时监控</h3>
+          <h3>当前水质参数</h3>
           <div class="water-params">
             <div class="param-item">
               <div class="param-label">时间</div>
@@ -83,7 +132,7 @@
 
         <!-- 水质统计 -->
         <div class="water-stats">
-          <h3>水质统计</h3>
+          <h3>水质等级统计</h3>
           <div class="stats-grid">
             <div class="stats-item excellent">
               <div class="stats-icon">🟢</div>
@@ -121,16 +170,29 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted, computed, nextTick } from 'vue'
+import { ref, onMounted, onUnmounted, computed, nextTick, watch } from 'vue'
 import * as echarts from 'echarts'
+import { ElTable, ElTableColumn, ElTag, ElSelect, ElOption, ElButton } from 'element-plus'
 
 // 响应式数据
 const currentTime = ref('')
-const totalSensors = ref(28) // A0-Z0 + A1, B1
-const lineChart = ref(null)
-const barChart = ref(null)
-let lineChartInstance = null
-let barChartInstance = null
+const trendChart = ref(null)
+const sankeyChart = ref(null)
+const stationChart = ref(null)
+let trendChartInstance = null
+let sankeyChartInstance = null
+let stationChartInstance = null
+
+// 雷达图相关数据
+const selectedStations = ref([]) // 多选站点
+const radarViewMode = ref('multiple') // 固定为多站点模式
+
+// 水质参数趋势图控制
+const trendParams = ref({
+  ph: true,
+  cod: true,
+  turbidity: true
+})
 
 // 水质参数
 const waterParams = ref({
@@ -144,20 +206,21 @@ const waterParams = ref({
 
 // 数据来自数据库
 const historyData = ref([])
+const predictionData = ref([])
 
-// 生成传感器列表 A0-Z0 + A1, B1
+// 生成传感器列表 - 钱塘江监测站点
 const generateSensorList = () => {
+  const stations = [
+    '杭州闸口', '富阳东洲', '桐庐县城', '建德梅城', '淳安千岛湖',
+    '衢州城区', '兰溪马公滩', '金华兰江', '绍兴柯桥', '宁波三江口',
+    '嘉兴王江泾', '湖州长兴', '台州三门', '温州瓯江口', '舟山沈家门'
+  ]
+  
   const sensors = []
   
-  // A0-Z0 (26个传感器)
-  for (let i = 0; i < 26; i++) {
-    const sensorId = String.fromCharCode(65 + i) + '0' // A0, B0, C0...Z0
-    sensors.push(createSensor(sensorId))
+  for (let i = 0; i < stations.length; i++) {
+    sensors.push(createSensor(stations[i]))
   }
-  
-  // A1, B1
-  sensors.push(createSensor('A1'))
-  sensors.push(createSensor('B1'))
   
   return sensors
 }
@@ -179,6 +242,8 @@ const createSensor = (id) => {
     ph: (6.5 + Math.random() * 2).toFixed(1),
     do: (6 + Math.random() * 4).toFixed(1),
     turbidity: (1 + Math.random() * 10).toFixed(1),
+    cod: (5 + Math.random() * 20).toFixed(1),
+    temperature: (10 + Math.random() * 15).toFixed(1),
     status,
     statusText: getStatusText(status)
   }
@@ -192,6 +257,17 @@ const getStatusText = (status) => {
     danger: '重度污染'
   }
   return statusMap[status] || '未知'
+}
+
+// 获取状态标签类型
+const getStatusType = (status) => {
+  const typeMap = {
+    excellent: 'success',
+    good: 'primary',
+    warning: 'warning',
+    danger: 'danger'
+  }
+  return typeMap[status] || 'info'
 }
 
 // 传感器状态数据
@@ -242,105 +318,178 @@ const getCODClass = (cod) => {
   return 'excellent'
 }
 
-// 显示传感器详情
-const showSensorDetail = (sensor) => {
-  console.log('传感器详情:', sensor)
-}
-
 // 更新时间
 const updateTime = () => {
   const now = new Date()
   currentTime.value = now.toLocaleString('zh-CN')
 }
 
-// 从后端获取水质数据
-const fetchWaterQualityData = async () => {
-  try {
-    // 获取数据集列表
-    const response = await fetch('/api/water-quality/datasets')
-    const datasetsResult = await response.json()
-    
-    // 检查响应是否成功
-    if (!datasetsResult.success) {
-      console.error('获取数据集失败:', datasetsResult.error)
-      return
-    }
-    
-    const datasets = datasetsResult.datasets
-    
-    if (datasets && datasets.length > 0) {
-      // 获取第一个数据集的数据
-      const tableName = datasets[0].table_name
-      
-      // 修改这里：使用正确的API路径 /api/water-quality/datasets/:table_name
-      const dataResponse = await fetch(`/api/water-quality/datasets/${tableName}?limit=10`)
-      const dataResult = await dataResponse.json()
-      
-      // 检查数据响应是否成功
-      if (!dataResult.success) {
-        console.error('获取数据失败:', dataResult.error)
-        return
-      }
-      
-      const data = dataResult.rows || dataResult.data || []
-      
-      // 确保数据存在且为数组
-      if (!Array.isArray(data) || data.length === 0) {
-        console.warn('未获取到有效数据')
-        return
-      }
-      
-      // 转换数据格式以适应图表
-      historyData.value = data.map(row => ({
-        time: row.date || row.created_at || new Date().toLocaleString(),
-        temperature: row.temperature !== undefined ? row.temperature : 0,
-        ph: row.pH !== undefined ? row.pH : (row.ph !== undefined ? row.ph : 0),
-        cod: row.O2 !== undefined ? row.O2 : (row.cod !== undefined ? row.cod : 0),
-        turbidity: row.NTU !== undefined ? row.NTU : (row.turbidity !== undefined ? row.turbidity : 0),
-        conductivity: row.uS !== undefined ? row.uS : (row.conductivity !== undefined ? row.conductivity : 0)
-      }))
-      
-      // 更新当前水质参数为最新数据
-      if (historyData.value.length > 0) {
-        const latest = historyData.value[0]
-        waterParams.value = {
-          time: latest.time,
-          temperature: latest.temperature,
-          ph: latest.ph,
-          cod: latest.cod,
-          turbidity: latest.turbidity,
-          conductivity: latest.conductivity
-        }
-      }
-      
-      // 重新初始化图表
-      nextTick(() => {
-        initLineChart()
-        initBarChart()
-      })
-    } else {
-      console.warn('未找到数据集')
-    }
-  } catch (error) {
-    console.error('获取水质数据失败:', error)
-  }
+// 切换趋势图参数显示
+const toggleTrendParam = (param) => {
+  trendParams.value[param] = !trendParams.value[param]
+  initTrendChart()
 }
-// 初始化折线图
-const initLineChart = () => {
-  if (!lineChart.value) return
+
+// 更新雷达图
+const updateRadarChart = () => {
+  initMultiStationRadarChart()
+}
+
+// 初始化多站点雷达图
+const initMultiStationRadarChart = () => {
+  if (!stationChart.value) return
   
-  if (lineChartInstance) {
-    lineChartInstance.dispose()
+  if (stationChartInstance) {
+    stationChartInstance.dispose()
   }
   
-  lineChartInstance = echarts.init(lineChart.value)
+  stationChartInstance = echarts.init(stationChart.value)
+  
+  // 获取选中的站点数据
+  const stations = waterSensors.value.filter(s => selectedStations.value.includes(s.id))
+  
+  // 如果没有选中站点，显示前5个
+  if (stations.length === 0) {
+    stations.push(...waterSensors.value.slice(0, 5))
+  }
+  
+  // 标准化数据
+  const indicator = [
+    { name: 'PH值', max: 100 },
+    { name: '溶解氧', max: 100 },
+    { name: '浊度', max: 100 },
+    { name: 'COD', max: 100 },
+    { name: '水温', max: 100 }
+  ]
+  
+  const seriesData = stations.map(station => {
+    const normalizedData = [
+      (station.ph / 14) * 100,
+      (station.do / 20) * 100,
+      100 - (station.turbidity / 50) * 100,
+      100 - (station.cod / 100) * 100,
+      100 - Math.abs(station.temperature - 20) / 20 * 100
+    ]
+    
+    return {
+      value: normalizedData,
+      name: station.id,
+      itemStyle: {
+        color: getStatusColor(station.status)
+      }
+    }
+  })
+  
+  const option = {
+    title: {
+      text: '多站点水质参数对比雷达图',
+      left: 'center'
+    },
+    tooltip: {
+      trigger: 'item'
+    },
+    legend: {
+      data: stations.map(s => s.id),
+      bottom: 10
+    },
+    radar: {
+      indicator: indicator,
+      radius: '60%'
+    },
+    series: [{
+      type: 'radar',
+      data: seriesData
+    }]
+  }
+  
+  stationChartInstance.setOption(option)
+}
+
+// 获取状态对应的颜色
+const getStatusColor = (status) => {
+  const colorMap = {
+    excellent: '#5470c6',
+    good: '#91cc75',
+    warning: '#fac858',
+    danger: '#ee6666'
+  }
+  return colorMap[status] || '#5470c6'
+}
+
+// 初始化趋势图表
+const initTrendChart = () => {
+  if (!trendChart.value) return
+  
+  if (trendChartInstance) {
+    trendChartInstance.dispose()
+  }
+  
+  trendChartInstance = echarts.init(trendChart.value)
+  
+  // 模拟数据
+  const dates = []
+  const phData = []
+  const codData = []
+  const turbidityData = []
+  
+  for (let i = 0; i < 7; i++) {
+    const date = new Date()
+    date.setDate(date.getDate() - i)
+    dates.push(date.toLocaleDateString('zh-CN'))
+    
+    phData.push((7.0 + Math.random()).toFixed(1))
+    codData.push((10 + Math.random() * 15).toFixed(1))
+    turbidityData.push((3 + Math.random() * 5).toFixed(1))
+  }
+  
+  const series = []
+  
+  if (trendParams.value.ph) {
+    series.push({
+      name: 'PH值',
+      type: 'line',
+      data: phData.reverse(),
+      smooth: true,
+      itemStyle: {
+        color: '#91cc75'
+      }
+    })
+  }
+  
+  if (trendParams.value.cod) {
+    series.push({
+      name: 'COD',
+      type: 'line',
+      data: codData.reverse(),
+      smooth: true,
+      itemStyle: {
+        color: '#fac858'
+      }
+    })
+  }
+  
+  if (trendParams.value.turbidity) {
+    series.push({
+      name: '浊度',
+      type: 'line',
+      data: turbidityData.reverse(),
+      smooth: true,
+      itemStyle: {
+        color: '#ee6666'
+      }
+    })
+  }
   
   const option = {
     tooltip: {
       trigger: 'axis'
     },
     legend: {
-      data: ['水温(℃)', 'PH值', 'COD(mg/L)', '浊度(NTU)', '电导率(μS/cm)']
+      data: [
+        ...(trendParams.value.ph ? ['PH值'] : []),
+        ...(trendParams.value.cod ? ['COD'] : []),
+        ...(trendParams.value.turbidity ? ['浊度'] : [])
+      ]
     },
     grid: {
       left: '3%',
@@ -350,179 +499,129 @@ const initLineChart = () => {
     },
     xAxis: {
       type: 'category',
-      boundaryGap: false,
-      data: historyData.value.map(item => item.time)
+      data: dates.reverse()
     },
     yAxis: {
       type: 'value'
     },
-    series: [
-      {
-        name: '水温(℃)',
-        type: 'line',
-        data: historyData.value.map(item => item.temperature),
-        smooth: true,
-        lineStyle: {
-          width: 3
-        },
-        itemStyle: {
-          color: '#5470c6'
-        }
-      },
-      {
-        name: 'PH值',
-        type: 'line',
-        data: historyData.value.map(item => item.ph),
-        smooth: true,
-        lineStyle: {
-          width: 3
-        },
-        itemStyle: {
-          color: '#91cc75'
-        }
-      },
-      {
-        name: 'COD(mg/L)',
-        type: 'line',
-        data: historyData.value.map(item => item.cod),
-        smooth: true,
-        lineStyle: {
-          width: 3
-        },
-        itemStyle: {
-          color: '#fac858'
-        }
-      },
-      {
-        name: '浊度(NTU)',
-        type: 'line',
-        data: historyData.value.map(item => item.turbidity),
-        smooth: true,
-        lineStyle: {
-          width: 3
-        },
-        itemStyle: {
-          color: '#ee6666'
-        }
-      },
-      {
-        name: '电导率(μS/cm)',
-        type: 'line',
-        data: historyData.value.map(item => item.conductivity),
-        smooth: true,
-        lineStyle: {
-          width: 3
-        },
-        itemStyle: {
-          color: '#73c0de'
-        }
-      }
-    ]
+    series: series
   }
   
-  lineChartInstance.setOption(option)
+  trendChartInstance.setOption(option)
 }
 
-// 初始化柱状图
-const initBarChart = () => {
-  if (!barChart.value) return
+// 初始化桑基图
+const initSankeyChart = () => {
+  if (!sankeyChart.value) return
   
-  if (barChartInstance) {
-    barChartInstance.dispose()
+  if (sankeyChartInstance) {
+    sankeyChartInstance.dispose()
   }
   
-  barChartInstance = echarts.init(barChart.value)
+  sankeyChartInstance = echarts.init(sankeyChart.value)
   
   const option = {
     tooltip: {
-      trigger: 'axis',
-      axisPointer: {
-        type: 'shadow'
-      }
-    },
-    grid: {
-      left: '3%',
-      right: '4%',
-      bottom: '3%',
-      containLabel: true
-    },
-    xAxis: {
-      type: 'category',
-      data: ['水温(℃)', 'PH值', 'COD(mg/L)', '浊度(NTU)', '电导率(μS/cm)']
-    },
-    yAxis: {
-      type: 'value'
+      trigger: 'item',
+      triggerOn: 'mousemove'
     },
     series: [
       {
-        name: '当前值',
-        type: 'bar',
-        barWidth: '60%',
+        type: 'sankey',
+        layout: 'none',
+        focusNodeAdjacency: 'allEdges',
         data: [
-          waterParams.value.temperature,
-          waterParams.value.ph,
-          waterParams.value.cod,
-          waterParams.value.turbidity,
-          waterParams.value.conductivity
+          { name: '上游' },
+          { name: '中游' },
+          { name: '下游' },
+          { name: '优' },
+          { name: '良' },
+          { name: '轻度污染' },
+          { name: '重度污染' }
         ],
-        itemStyle: {
-          color: function(params) {
-            const colors = ['#5470c6', '#91cc75', '#fac858', '#ee6666', '#73c0de']
-            return colors[params.dataIndex]
-          },
-          borderRadius: [4, 4, 0, 0]
+        links: [
+          { source: '上游', target: '优', value: 15 },
+          { source: '上游', target: '良', value: 3 },
+          { source: '中游', target: '优', value: 8 },
+          { source: '中游', target: '良', value: 7 },
+          { source: '中游', target: '轻度污染', value: 2 },
+          { source: '下游', target: '良', value: 3 },
+          { source: '下游', target: '轻度污染', value: 5 },
+          { source: '下游', target: '重度污染', value: 4 }
+        ],
+        lineStyle: {
+          color: 'source',
+          curveness: 0.5
         },
-        emphasis: {
-          itemStyle: {
-            shadowBlur: 10,
-            shadowOffsetX: 0,
-            shadowColor: 'rgba(0, 0, 0, 0.5)'
-          }
+        label: {
+          color: 'rgba(0,0,0,0.7)',
+          fontSize: 12
+        },
+        itemStyle: {
+          border: '#aaa',
+          borderWidth: 1
         }
       }
     ]
   }
   
-  barChartInstance.setOption(option)
+  sankeyChartInstance.setOption(option)
 }
 
 // 定时器
 let timer = null
-let dataTimer = null
 
 onMounted(() => {
   updateTime()
   timer = setInterval(updateTime, 1000)
   
-  // 获取数据库数据
-  fetchWaterQualityData()
-  
-  // 每分钟更新一次数据
-  dataTimer = setInterval(fetchWaterQualityData, 60000)
-  
-  // 在DOM更新后初始化图表
+  // 初始化图表
   nextTick(() => {
-    initLineChart()
-    initBarChart()
+    // 设置默认选中站点
+    if (waterSensors.value.length > 0) {
+      selectedStations.value = [waterSensors.value[0].id]
+    }
+    
+    updateRadarChart()
+    initTrendChart()
+    initSankeyChart()
   })
+  
+  // 添加窗口大小改变事件监听
+  window.addEventListener('resize', handleResize)
 })
 
+// 监听选中站点变化
+watch(selectedStations, () => {
+  updateRadarChart()
+})
+
+// 监听趋势图参数变化
+watch(trendParams, () => {
+  initTrendChart()
+}, { deep: true })
+
+const handleResize = () => {
+  // 添加延迟以确保容器尺寸已更新
+  setTimeout(() => {
+    if (stationChartInstance) stationChartInstance.resize()
+    if (trendChartInstance) trendChartInstance.resize()
+    if (sankeyChartInstance) sankeyChartInstance.resize()
+  }, 100)
+}
+
+// 在 onUnmounted 中清理残留代码
 onUnmounted(() => {
   if (timer) clearInterval(timer)
-  if (dataTimer) clearInterval(dataTimer)
-  if (lineChartInstance) lineChartInstance.dispose()
-  if (barChartInstance) barChartInstance.dispose()
-})
-
-// 监听窗口大小变化，重置图表大小
-window.addEventListener('resize', () => {
-  if (lineChartInstance) lineChartInstance.resize()
-  if (barChartInstance) barChartInstance.resize()
+  if (stationChartInstance) stationChartInstance.dispose()
+  if (trendChartInstance) trendChartInstance.dispose()
+  if (sankeyChartInstance) sankeyChartInstance.dispose()
+  window.removeEventListener('resize', handleResize)
 })
 </script>
 
 <style scoped>
-/* 样式保持不变 */
+/* 样式保持不变，但需要引入element-plus样式 */
 .system-analysis {
   background: linear-gradient(135deg, #e0f7fa 0%, #f5f7fa 100%);
   min-height: 100vh;
@@ -607,7 +706,13 @@ window.addEventListener('resize', () => {
   z-index: 1;
 }
 
-.water-quality-section {
+.data-section {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 20px;
+}
+
+.data-table-section {
   background: rgba(255, 255, 255, 0.85);
   border-radius: 15px;
   padding: 20px;
@@ -618,27 +723,7 @@ window.addEventListener('resize', () => {
   backdrop-filter: blur(10px);
 }
 
-.water-quality-section::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 4px;
-  background: linear-gradient(90deg, #1976d2, #4caf50, #1976d2);
-  animation: flowLine 3s linear infinite;
-}
-
-@keyframes flowLine {
-  0% {
-    background-position: 0%;
-  }
-  100% {
-    background-position: 200%;
-  }
-}
-
-.water-quality-section h3 {
+.data-table-section h3 {
   margin: 0 0 20px 0;
   color: #1976d2;
   font-size: 1.3rem;
@@ -648,149 +733,23 @@ window.addEventListener('resize', () => {
   position: relative;
 }
 
-.water-quality-section h3::after {
-  content: "";
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 60px;
-  height: 2px;
-  background: linear-gradient(90deg, #1976d2, #4caf50);
-  border-radius: 2px;
-}
-
-.water-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 12px;
-  max-height: 600px;
+.table-container {
+  max-height: 400px;
   overflow-y: auto;
-  padding: 5px;
 }
 
-.sensor-item {
-  background: #f8f9fa;
-  border-radius: 10px;
-  padding: 10px;
-  text-align: center;
-  border: 2px solid transparent;
-  transition: all 0.3s ease;
-  cursor: pointer;
-  position: relative;
-  min-height: 120px;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  position: relative;
-  overflow: hidden;
+.station-chart {
+  height: auto;
 }
 
-.sensor-item::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: radial-gradient(circle at center, rgba(255, 255, 255, 0.5) 0%, transparent 70%);
-  opacity: 0;
-  transition: opacity 0.3s;
+.station-chart .chart {
+  height: 400px;
 }
 
-.sensor-item:hover::before {
-  opacity: 1;
+.station-chart-controls {
+  margin-bottom: 15px;
 }
 
-.sensor-item:hover {
-  transform: translateY(-5px);
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
-}
-
-/* 优 - 绿色 */
-.sensor-item.excellent {
-  border-color: #4caf50;
-  background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
-}
-
-/* 良 - 蓝色 */
-.sensor-item.good {
-  border-color: #2196f3;
-  background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
-}
-
-/* 轻度污染 - 黄色 */
-.sensor-item.warning {
-  border-color: #ff9800;
-  background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%);
-}
-
-/* 重度污染 - 红色 */
-.sensor-item.danger {
-  border-color: #f44336;
-  background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
-}
-
-.sensor-id {
-  font-weight: bold;
-  font-size: 1.1rem;
-  color: #333;
-  margin-bottom: 10px;
-}
-
-.sensor-params {
-  font-size: 0.85rem;
-  color: #666;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-}
-
-.sensor-status-indicator {
-  font-size: 0.9rem;
-  font-weight: 500;
-  padding: 3px 8px;
-  border-radius: 12px;
-  display: inline-block;
-  align-self: center;
-  animation: pulse 2s infinite;
-}
-
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-.sensor-item.excellent .sensor-status-indicator {
-  background: #4caf50;
-  color: white;
-}
-
-.sensor-item.good .sensor-status-indicator {
-  background: #2196f3;
-  color: white;
-}
-
-.sensor-item.warning .sensor-status-indicator {
-  background: #ff9800;
-  color: white;
-}
-
-.sensor-item.danger .sensor-status-indicator {
-  background: #f44336;
-  color: white;
-}
-
-/* 图表区域 */
 .chart-section {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -808,17 +767,6 @@ window.addEventListener('resize', () => {
   backdrop-filter: blur(10px);
 }
 
-.chart-container::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 4px;
-  background: linear-gradient(90deg, #1976d2, #4caf50, #1976d2);
-  animation: flowLine 3s linear infinite;
-}
-
 .chart-container h3 {
   margin: 0 0 20px 0;
   color: #1976d2;
@@ -829,15 +777,25 @@ window.addEventListener('resize', () => {
   position: relative;
 }
 
-.chart-container h3::after {
-  content: "";
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 60px;
-  height: 2px;
-  background: linear-gradient(90deg, #1976d2, #4caf50);
-  border-radius: 2px;
+.trend-chart-wrapper {
+  display: flex;
+  height: 300px;
+}
+
+.trend-chart-wrapper .chart {
+  flex: 1;
+  height: 100%;
+  background: rgba(245, 247, 250, 0.5);
+  border-radius: 8px;
+}
+
+.trend-chart-controls {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 10px;
+  padding-left: 15px;
+  width: 80px;
 }
 
 .chart {
@@ -863,17 +821,6 @@ window.addEventListener('resize', () => {
   backdrop-filter: blur(10px);
 }
 
-.water-monitor::before, .water-stats::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 4px;
-  background: linear-gradient(90deg, #1976d2, #4caf50, #1976d2);
-  animation: flowLine 3s linear infinite;
-}
-
 .water-monitor h3, .water-stats h3 {
   margin: 0 0 20px 0;
   color: #1976d2;
@@ -882,17 +829,6 @@ window.addEventListener('resize', () => {
   border-bottom: 2px solid #e0e0e0;
   padding-bottom: 10px;
   position: relative;
-}
-
-.water-monitor h3::after, .water-stats h3::after {
-  content: "";
-  position: absolute;
-  bottom: -2px;
-  left: 0;
-  width: 60px;
-  height: 2px;
-  background: linear-gradient(90deg, #1976d2, #4caf50);
-  border-radius: 2px;
 }
 
 .water-params {
@@ -1014,28 +950,46 @@ window.addEventListener('resize', () => {
 }
 
 @media (max-width: 1200px) {
-  .water-grid {
-    grid-template-columns: repeat(5, 1fr);
-  }
-  
-  .water-params {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  
-  .bottom-panels {
+  .data-section {
     grid-template-columns: 1fr;
   }
   
   .chart-section {
     grid-template-columns: 1fr;
   }
+  
+  .bottom-panels {
+    grid-template-columns: 1fr;
+  }
+  
+  .water-params {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .station-chart-controls {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  
+  .station-chart-controls .el-select {
+    margin-bottom: 10px;
+  }
+  
+  .trend-chart-wrapper {
+    flex-direction: column;
+    height: auto;
+  }
+  
+  .trend-chart-controls {
+    flex-direction: row;
+    justify-content: center;
+    padding-left: 0;
+    padding-top: 15px;
+    width: 100%;
+  }
 }
 
 @media (max-width: 768px) {
-  .water-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  
   .water-params {
     grid-template-columns: 1fr;
   }

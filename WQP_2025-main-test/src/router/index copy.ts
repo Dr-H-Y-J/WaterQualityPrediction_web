@@ -3,13 +3,11 @@ import { createRouter, createWebHistory } from 'vue-router'
 import Admin from '@/views/admin/Admin.vue'
 import Login from '@/views/Login.vue'
 import Register from '@/views/Register.vue'
-import Features from '../views/Features.vue'
-import Home from '../views/Home.vue'
+
 const routes = [
-   {
+  {
     path: '/',
-    name: 'Home',
-    component: Home
+    redirect: '/login'
   },
   {
     path: '/login',
@@ -20,11 +18,6 @@ const routes = [
     path: '/register',
     name: 'Register',
     component: Register
-  },
-  {
-    path: '/features',
-    name: 'Features',
-    component: Features
   },
   {
     path: '/admin',
