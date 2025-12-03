@@ -32,11 +32,7 @@
           </div>
         </div>
         <div class="hero-image animate__animated animate__fadeInRight">
-          <!-- 沙漏动画效果 -->
-          <div class="hourglass-loader">
-            <span class="top"></span>
-            <span class="bottom"></span>
-          </div>
+
         </div>
       </div>
       <!-- 添加新的背景动画元素 -->
@@ -468,113 +464,6 @@ onBeforeUnmount(() => {
 .btn-block {
   display: block;
   width: 100%;
-}
-
-/* 沙漏动画效果 */
-.hourglass-loader {
-  width: 6em;
-  height: 12em;
-  font-size: 12px;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  animation: rotating 6s linear infinite;
-}
-
-.top,
-.bottom {
-  width: 4.5em;
-  height: 4.5em;
-  border-style: solid;
-  border-color: #1890ff;
-  border-width: 0.3em 0.3em 0.8em 0.8em;
-  border-radius: 50% 100% 50% 30%;
-  overflow: hidden;
-  box-shadow: 0 4px 10px rgba(24, 144, 255, 0.3);
-}
-
-.top {
-  transform: rotate(-45deg);
-}
-
-.bottom {
-  transform: rotate(135deg);
-}
-
-.top::before,
-.bottom::before {
-  content: '';
-  position: absolute;
-  width: inherit;
-  height: inherit;
-  background: linear-gradient(135deg, #40a9ff, #1890ff);
-  animation: 6s linear infinite;
-}
-
-.top::before {
-  border-radius: 0 100% 0 0;
-  animation-name: drop-sand;
-}
-
-.bottom::before {
-  border-radius: 0 0 0 35%;
-  transform: translate(3em, -3em);
-  animation-name: fill-sand;
-}
-
-.hourglass-loader::after {
-  content: '';
-  position: absolute;
-  width: 0.3em;
-  height: 6em;
-  background: linear-gradient(to bottom, rgba(64, 169, 255, 0.8), #1890ff);
-  top: 1.2em;
-  border-radius: 0.15em;
-  animation: flow 6s linear infinite;
-}
-
-@keyframes drop-sand {
-  0% {
-    transform: translate(0, 0);
-  }
-  50%, 100% {
-    transform: translate(-3em, 3em);
-  }
-}
-
-@keyframes fill-sand {
-  0%, 50% {
-    transform: translate(3em, -3em);
-  }
-  100% {
-    transform: translate(0, 0);
-  }
-}
-
-@keyframes flow {
-  0%, 10% {
-    transform: translateY(0);
-    opacity: 0;
-  }
-  20%, 80% {
-    transform: translateY(4em);
-    opacity: 1;
-  }
-  90%, 100% {
-    transform: translateY(4em);
-    opacity: 0;
-  }
-}
-
-@keyframes rotating {
-  0%, 75% {
-    transform: rotate(0);
-  }
-  80%, 100% {
-    transform: rotate(0.5turn);
-  }
 }
 
 /* 导航栏 */
